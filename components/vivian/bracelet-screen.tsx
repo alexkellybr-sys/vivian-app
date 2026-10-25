@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Heart, RefreshCw, Trash2 } from "lucide-react"
 import { api, cacheGet, cacheSet } from "@/lib/client"
-import { DADOS_OPTIONS, NAME_FIELD, TABS, type FieldDef, type TabDef } from "@/lib/tabs"
+import { BASE_FIELDS, DADOS_OPTIONS, HIDDEN_IN_DADOS, NAME_FIELD, TABS, type FieldDef, type TabDef } from "@/lib/tabs"
 import type { Bracelet, HistoryEntry } from "@/lib/types"
 import { GoldButton } from "./gold-button"
 import { GpsTab } from "./gps-tab"
 import { SummaryTab } from "./summary-tab"
 import { VacinasTab } from "./vacinas-tab"
 import { CoracaoTab } from "./coracao-tab"
+import { AnamneseTab } from "./anamnese-tab"
+import { AltaTab } from "./alta-tab"
 import { useGps } from "./gps-monitor"
 
 type Props = {
@@ -70,7 +72,9 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved, canErase }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nfc])
 
-  const current = TABS.find((t) => t.id === tab) || TABS[0]
+  // a aba Alta é só do celular; no PC aparece o aviso de alta e o botão Apagar dados
+  const tabs = TABS.filter((t) => !(canErase && t.kind === "alta"))
+  const current = tabs.find((t) => t.id === tab) || tabs[0]
   const name = bracelet?.dados[NAME_FIELD] || ""
   const inAlarm = alarms.some((a) => a.nfc === nfc)
 
@@ -99,9 +103,14 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved, canErase }: P
           <h3 className="font-bold text-lg leading-tight">{name || "Bebê sem nome"}</h3>
           <p className="text-sm text-muted-foreground">
             Pulseira {nfc}
+            {bracelet?.dados["Enfermaria"] ? ` · Enfermaria ${bracelet.dados["Enfermaria"]}` : ""}
             {bracelet?.dados["Leito"] ? ` · Leito ${bracelet.dados["Leito"]}` : ""}
+            {bracelet?.dados["DNV"] ? ` · DNV ${bracelet.dados["DNV"]}` : ""}
             {bracelet?.dados["Nome da mãe"] ? ` · Mãe: ${bracelet.dados["Nome da mãe"]}` : ""}
           </p>
+          {bracelet?.dados["Alta"] && (
+            <p className="text-sm font-bold text-green-800 mt-1">🏠 Alta: {bracelet.dados["Alta"]}{bracelet.dados["Especialista da alta"] ? ` · ${bracelet.dados["Especialista da alta"]}` : ""}</p>
+          )}
           {inAlarm && <p className="text-sm font-bold text-red-600 mt-1">⚠️ GPS: fora da área</p>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -138,7 +147,7 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved, canErase }: P
       {loadError && <p className="mx-5 mt-2 text-xs text-red-600">{loadError}</p>}
 
       <div role="tablist" aria-label="Abas do paciente" className="flex gap-2 overflow-x-auto lg:flex-wrap px-4 py-3 no-scrollbar">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             role="tab"
@@ -163,6 +172,10 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved, canErase }: P
           <DadosTab key={nfc} bracelet={bracelet} onSaved={updated} />
         ) : current.kind === "registro" ? (
           <RegistroTab key={`${nfc}-${current.id}`} nfc={nfc} tab={current} history={bracelet.historico} onSaved={updated} />
+        ) : current.kind === "anamnese" ? (
+          <AnamneseTab key={nfc} bracelet={bracelet} onSaved={updated} />
+        ) : current.kind === "alta" ? (
+          <AltaTab key={nfc} bracelet={bracelet} onSaved={updated} />
         ) : current.kind === "coracao" ? (
           <CoracaoTab key={nfc} nfc={nfc} history={bracelet.historico} onSaved={updated} />
         ) : current.kind === "vacinas" ? (
@@ -229,7 +242,10 @@ function DadosTab({ bracelet, onSaved }: { bracelet: Bracelet; onSaved: (b: Brac
   const [status, setStatus] = useState<Status>(null)
   useEffect(() => setForm(bracelet.dados), [bracelet])
 
-  const fields = useMemo(() => Array.from(new Set([...bracelet.campos, ...Object.keys(form)])), [bracelet.campos, form])
+  const fields = useMemo(
+    () => Array.from(new Set([...BASE_FIELDS, ...bracelet.campos, ...Object.keys(form)])).filter((f) => !HIDDEN_IN_DADOS.includes(f)),
+    [bracelet.campos, form],
+  )
   const changed = fields.filter((f) => (form[f] ?? "") !== (bracelet.dados[f] ?? ""))
 
   const save = () =>

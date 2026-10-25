@@ -111,6 +111,8 @@ export function BraceletsScreen({ list, loading, error, selected, compact, onRef
         {list.map((b) => {
           const s = situation(b.nfc)
           const out = alarms.some((a) => a.nfc === b.nfc)
+          // a lista do GPS (atualiza a cada 10 s) já traz a alta dada no celular
+          const alta = state ? state.pulseiras.find((p) => p.nfc === b.nfc)?.alta : b.alta
           return (
             <button
               key={b.nfc}
@@ -119,18 +121,25 @@ export function BraceletsScreen({ list, loading, error, selected, compact, onRef
                 out ? "border-l-red-600 bg-red-50" : "border-l-primary"
               } ${selected === b.nfc ? "ring-2 ring-primary" : ""}`}
             >
-              <div>
-                <b>{b.bebe || "Sem nome"}</b>
-                <br />
-                <span className="text-sm text-muted-foreground">
-                  Pulseira {b.nfc}
-                  {b.leito ? ` · Leito ${b.leito}` : ""}
-                </span>
-                {s && (
-                  <span className={`ml-2 text-[11px] font-bold rounded-full px-2 py-0.5 ${s === "FORA" ? "bg-red-600 text-white" : s === "dentro" ? "bg-green-100 text-green-800" : "bg-muted"}`}>
-                    GPS {s === "FORA" ? "FORA" : s}
-                  </span>
-                )}
+              <div className="min-w-0 text-sm leading-snug">
+                <p className="flex flex-wrap gap-x-4">
+                  <span><span className="text-muted-foreground">Mãe:</span> <b>{b.mae || "—"}</b></span>
+                  <span><span className="text-muted-foreground">Bebê:</span> <b>{b.bebe || "Sem nome"}</b></span>
+                </p>
+                <p className="flex flex-wrap gap-x-4 text-muted-foreground">
+                  <span>Pulseira <b className="text-foreground">{b.nfc}</b></span>
+                  <span>Enfermaria <b className="text-foreground">{b.enfermaria || "—"}</b></span>
+                  <span>Leito <b className="text-foreground">{b.leito || "—"}</b></span>
+                </p>
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5">
+                  <span className="text-muted-foreground">DNV <b className="text-foreground">{b.dnv || "—"}</b></span>
+                  {s && (
+                    <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 ${s === "FORA" ? "bg-red-600 text-white" : s === "dentro" ? "bg-green-100 text-green-800" : "bg-muted"}`}>
+                      GPS {s === "FORA" ? "FORA" : s}
+                    </span>
+                  )}
+                  {alta && <span className="text-[11px] font-bold rounded-full px-2 py-0.5 bg-green-700 text-white">ALTA</span>}
+                </p>
               </div>
               <ChevronRight className="w-5 h-5 shrink-0" />
             </button>

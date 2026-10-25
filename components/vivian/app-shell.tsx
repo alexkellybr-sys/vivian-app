@@ -1,5 +1,6 @@
 "use client"
 
+import { AltaNotices } from "./alta-notices"
 import { useCallback, useEffect, useState } from "react"
 import { Bell, Home, Settings, User, Users } from "lucide-react"
 import { api, cacheGet, cacheSet, getNurse, isLoggedIn } from "@/lib/client"
@@ -147,7 +148,7 @@ export function AppShell({ painel = false }: { painel?: boolean }) {
   // depois de salvar, atualiza a linha da lista sem esperar a planilha
   const onSaved = (b: Bracelet) =>
     setList((current) => {
-      const row: BraceletSummary = { nfc: b.nfc, bebe: b.dados[NAME_FIELD] || "", mae: b.dados["Nome da mãe"] || "", leito: b.dados["Leito"] || "", gps: b.dados["GPS (IMEI)"] || "", atualizado: "", situacao: "" }
+      const row: BraceletSummary = { nfc: b.nfc, bebe: b.dados[NAME_FIELD] || "", mae: b.dados["Nome da mãe"] || "", leito: b.dados["Leito"] || "", gps: b.dados["GPS (IMEI)"] || "", atualizado: "", situacao: "", enfermaria: b.dados["Enfermaria"] || "", dnv: b.dados["DNV"] || "", alta: b.dados["Alta"] ? `${b.dados["Alta"]}${b.dados["Especialista da alta"] ? " · " + b.dados["Especialista da alta"] : ""}` : "" }
       const exists = current.some((x) => x.nfc === b.nfc)
       const next = exists ? current.map((x) => (x.nfc === b.nfc ? { ...x, ...row, atualizado: x.atualizado, situacao: x.situacao } : x)) : [...current, row]
       cacheSet("list", next)
@@ -182,6 +183,7 @@ export function AppShell({ painel = false }: { painel?: boolean }) {
         // ───────── PAINEL DO COMPUTADOR ─────────
         <div className="h-dvh w-full bg-background flex flex-col">
           <DesktopBar screen={screen} onNavigate={navigate} />
+          <AltaNotices current={screen === "bracelet" ? selected : null} onOpen={(n) => { setCameFromList(true); openBracelet(n) }} />
           <div className="flex-1 grid grid-cols-[400px_1fr] min-h-0">
             <aside className="border-r-2 border-primary/30 overflow-y-auto pb-6">{listScreen}</aside>
             <main className="overflow-y-auto">

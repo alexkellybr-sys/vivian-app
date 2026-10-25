@@ -6,6 +6,7 @@ import { buildSummary, fmtDate, type Registro } from "@/lib/summary"
 import type { Bracelet } from "@/lib/types"
 import { useGps } from "./gps-monitor"
 import { doses } from "@/lib/vacinas"
+import { ANAMNESE_FIELDS, BIRTH_FIELD, HIDDEN_IN_DADOS } from "@/lib/tabs"
 
 const ABA_COLOR: Record<string, string> = {
   "Sinais vitais": "border-l-sky-500",
@@ -28,6 +29,9 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
   const s = useMemo(() => buildSummary(bracelet), [bracelet])
   const { state } = useGps()
   const pos = state?.posicoes.find((p) => p.nfc === bracelet.nfc)
+  const anam = [BIRTH_FIELD, ...ANAMNESE_FIELDS.map((f) => f.name)].filter((k) => bracelet.dados[k]).map((k) => [k, bracelet.dados[k]] as const)
+  // anamnese antiga (texto livre, antes da ficha)
+  const oldAnam = s.anamnese.filter((r) => r.items.some((i) => i.campo === "Anamnese"))
   const vacItems = (state?.agenda || []).filter((a) => a.nfc === bracelet.nfc && a.situacao !== "Concluída")
   const vacDue = vacItems.filter((a) => doses(a).some((d) => !d.aplicada && d.date.getTime() <= Date.now()))
   const [open, setOpen] = useState<Record<string, boolean>>({})
@@ -35,13 +39,19 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
 
   return (
     <div className="space-y-3">
+      {d["Alta"] && (
+        <div className="rounded-[18px] border-2 border-green-700 bg-green-50 p-4 text-sm">
+          <p className="font-bold text-green-800">🏠 ALTA em {d["Alta"]}{d["Especialista da alta"] ? ` · ${d["Especialista da alta"]}` : ""}</p>
+          {d["Observações da alta"] && <p className="mt-1">📝 {d["Observações da alta"]}</p>}
+        </div>
+      )}
       {/* identificação */}
       <div className="bg-card rounded-[18px] border-2 border-primary p-4 text-sm">
         {s.dayOfStay && <p className="font-bold mb-2">📅 Dia {s.dayOfStay} de internação</p>}
         {/* todos os dados preenchidos na aba Dados (inclusive campos novos criados no PC) */}
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
           {Object.entries(d)
-            .filter(([k, v]) => v && k !== "Nome do bebê")
+            .filter(([k, v]) => v && k !== "Nome do bebê" && !HIDDEN_IN_DADOS.includes(k))
             .map(([k, v]) => (
               <div key={k} className="contents">
                 <dt className="text-muted-foreground">{k}</dt>
@@ -49,7 +59,7 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
               </div>
             ))}
         </dl>
-        {Object.entries(d).filter(([k, v]) => v && k !== "Nome do bebê").length === 0 && (
+        {Object.entries(d).filter(([k, v]) => v && k !== "Nome do bebê" && !HIDDEN_IN_DADOS.includes(k)).length === 0 && (
           <p className="text-muted-foreground">Nenhum dado preenchido. <button className="underline" onClick={() => onGo("dados")}>Preencher</button></p>
         )}
         {pos && (
@@ -111,7 +121,19 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
       </Block>
 
       <Block title="Anamnese" icon={<Stethoscope className="w-4 h-4" />} onAdd={() => onGo("anamnese")}>
-        {s.anamnese.length === 0 ? <p className="text-sm text-muted-foreground">Sem anamnese registrada.</p> : s.anamnese.slice(0, 3).map((r, i) => <Line key={i} r={r} />)}
+        {anam.length === 0 && oldAnam.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sem anamnese registrada.</p>
+        ) : (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            {anam.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="text-muted-foreground">{k === BIRTH_FIELD ? "Nascimento" : k}</dt>
+                <dd className="font-semibold break-words">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {oldAnam.slice(0, 2).map((r, i) => <Line key={i} r={r} />)}
       </Block>
 
       <Block title="Diagnóstico" icon={<Stethoscope className="w-4 h-4" />} onAdd={() => onGo("diagnostico")}>

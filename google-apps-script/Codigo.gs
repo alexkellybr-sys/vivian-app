@@ -24,8 +24,8 @@ const FENCES = "Cercas"
 const POSITIONS = "Posições"
 const HIST_COL = 4 // coluna D
 const FIRST_ROW = 3 // linhas 1-2 = título e cabeçalhos
-const DEFAULT_FIELDS = ["Nome do bebê", "Nome da mãe", "Leito", "Data de nascimento", "Sexo", "Telefone de emergência", "GPS (IMEI)"]
-const INDEX_HEADERS = ["NFC", "Bebê", "Mãe", "Leito", "GPS", "Última atualização", "Abrir aba"]
+const DEFAULT_FIELDS = ["Nome do bebê", "Nome da mãe", "Enfermaria", "Leito", "Data de nascimento", "Sexo", "DNV", "Telefone de emergência", "GPS (IMEI)"]
+const INDEX_HEADERS = ["NFC", "Bebê", "Mãe", "Leito", "GPS", "Última atualização", "Abrir aba", "Enfermaria", "DNV", "Alta"]
 const FENCE_HEADERS = ["Nome", "Tipo", "Pulseiras", "Forma", "Coordenadas", "Raio (m)", "Ativa", "Atualizado"]
 const POS_HEADERS = ["NFC", "Latitude", "Longitude", "Precisão (m)", "Fonte", "Data/hora", "Situação", "Setor", "Distância (m)"]
 
@@ -234,9 +234,10 @@ function list_() {
   const index = ss_().getSheetByName(INDEX)
   const positions = {}
   rows_(ss_().getSheetByName(POSITIONS), FIRST_ROW, 1, POS_HEADERS.length).forEach(function (r) { positions[key_(r[0])] = r })
-  return rows_(index, FIRST_ROW, 1, 6).filter(function (r) { return r[0] }).map(function (r) {
+  ensureIndexCols_(index)
+  return rows_(index, FIRST_ROW, 1, INDEX_HEADERS.length).filter(function (r) { return r[0] }).map(function (r) {
     const p = positions[key_(r[0])]
-    return { nfc: r[0], bebe: r[1], mae: r[2], leito: r[3], gps: r[4], atualizado: r[5], situacao: p ? p[6] : "" }
+    return { nfc: r[0], bebe: r[1], mae: r[2], leito: r[3], gps: r[4], atualizado: r[5], situacao: p ? p[6] : "", enfermaria: r[7], dnv: r[8], alta: r[9] }
   })
 }
 
@@ -298,7 +299,7 @@ function rebuildSummary_(sheet) {
   if (out.length) sheet.getRange(FIRST_ROW, SUM_COL, out.length, SUM_HEADERS.length).setValues(out).setWrap(true).setVerticalAlignment("top")
 }
 
-function saveDados_(sheet, nfc, dados, user) {
+function saveDados_(sheet, nfc, dados, user, aba) {
   const rows = rows_(sheet, FIRST_ROW, 1, 2)
   const stamp = now_()
   const history = []
@@ -316,7 +317,7 @@ function saveDados_(sheet, nfc, dados, user) {
     }
     if (rows[idx][1] !== value) {
       sheet.getRange(FIRST_ROW + idx, 2).setValue(safe_(value))
-      history.push([stamp, "Dados", name, value, user])
+      history.push([stamp, aba || "Dados", name, value, user])
       rows[idx][1] = value
     }
   })
@@ -329,9 +330,18 @@ function updateIndex_(nfc, sheet) {
   const row = indexRow_(nfc)
   if (row < 0) return
   const d = readBracelet_(sheet).dados
-  ss_().getSheetByName(INDEX).getRange(row, 2, 1, 5).setValues([[
+  const index = ss_().getSheetByName(INDEX)
+  index.getRange(row, 2, 1, 5).setValues([[
     safe_(d["Nome do bebê"] || ""), safe_(d["Nome da mãe"] || ""), safe_(d["Leito"] || ""), safe_(d["GPS (IMEI)"] || ""), now_(),
   ]])
+  ensureIndexCols_(index)
+  index.getRange(row, 8, 1, 3).setValues([[safe_(d["Enfermaria"] || ""), safe_(d["DNV"] || ""), safe_(d["Alta"] ? d["Alta"] + (d["Especialista da alta"] ? " · " + d["Especialista da alta"] : "") : "")]])
+}
+// a aba "Pulseiras" antiga tinha 7 colunas: acrescenta Enfermaria, DNV e Alta
+function ensureIndexCols_(index) {
+  if (str_(index.getRange(2, 8).getValue())) return
+  index.getRange(1, 8, 1000, 3).setNumberFormat("@")
+  index.getRange(2, 8, 1, 3).setValues([["Enfermaria", "DNV", "Alta"]]).setFontWeight("bold").setBackground("#F9E498")
 }
 
 // ───────────────────────── GPS ─────────────────────────
@@ -640,7 +650,7 @@ function doPost(e) {
     }
     const sheet = braceletSheet_(b.nfc)
     if (!sheet) return json_({ ok: false, notFound: true, error: "Pulseira " + b.nfc + " não cadastrada." })
-    if (b.dados && Object.keys(b.dados).length) saveDados_(sheet, sheet.getName(), b.dados, user)
+    if (b.dados && Object.keys(b.dados).length) saveDados_(sheet, sheet.getName(), b.dados, user, ["Anamnese", "Alta"].indexOf(b.aba) >= 0 ? b.aba : "Dados")
     if (Array.isArray(b.registros) && b.registros.length) {
       const stamp = now_()
       const aba = String(b.aba || "Registro").slice(0, 40)

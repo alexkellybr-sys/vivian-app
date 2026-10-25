@@ -5,7 +5,7 @@ import { api } from "@/lib/client"
 import type { Bracelet } from "@/lib/types"
 import { GoldButton } from "./gold-button"
 
-const FIELDS = ["Nome do bebê", "Nome da mãe", "Leito", "Telefone de emergência"]
+const FIELDS = ["Nome do bebê", "Nome da mãe", "Enfermaria", "Leito", "Telefone de emergência"]
 
 export function NewBraceletScreen({ initialNfc = "", onCreated }: { initialNfc?: string; onCreated: (b: Bracelet) => void }) {
   const [nfc, setNfc] = useState(initialNfc)

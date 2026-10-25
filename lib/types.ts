@@ -6,6 +6,9 @@ export type BraceletSummary = {
   gps: string
   atualizado: string
   situacao: string
+  enfermaria?: string
+  dnv?: string
+  alta?: string // "dd/MM/aaaa HH:mm · Enf. Fulana" quando o celular deu alta
 }
 
 export type HistoryEntry = { data: string; aba: string; campo: string; valor: string; usuario: string }

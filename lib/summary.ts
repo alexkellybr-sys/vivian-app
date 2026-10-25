@@ -80,7 +80,7 @@ export function buildSummary(b: Bracelet, now = new Date()) {
   const allMeds = recs.filter((r) => r.aba === "Medicações")
   const allIncidents = recs.filter((r) => r.aba === "Intercorrências")
   // abas que não têm bloco próprio no Resumo (ex.: campos/abas novas): mostra o último de cada
-  const KNOWN = ["Sinais vitais", "Alergias", "Vacinas", "Teste do coraçãozinho", "Diagnóstico", "Medicações", "Intercorrências", "Conferência", "Anamnese", "Dados", "GPS"]
+  const KNOWN = ["Sinais vitais", "Alergias", "Alta", "Vacinas", "Teste do coraçãozinho", "Diagnóstico", "Medicações", "Intercorrências", "Conferência", "Anamnese", "Dados", "GPS"]
   const others: typeof recs = []
   for (const r of recs) if (!KNOWN.includes(r.aba) && !others.some((o) => o.aba === r.aba)) others.push(r)
   const anamnese = recs.filter((r) => r.aba === "Anamnese")
