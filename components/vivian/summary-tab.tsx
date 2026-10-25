@@ -6,7 +6,7 @@ import { buildSummary, fmtDate, type Registro } from "@/lib/summary"
 import type { Bracelet } from "@/lib/types"
 import { useGps } from "./gps-monitor"
 import { doses } from "@/lib/vacinas"
-import { ANAMNESE_FIELDS, BIRTH_FIELD, HIDDEN_IN_DADOS } from "@/lib/tabs"
+import { ANAMNESE_FIELDS, BIRTH_FIELD, HIDDEN_IN_RESUMO_TOP } from "@/lib/tabs"
 
 const ABA_COLOR: Record<string, string> = {
   "Sinais vitais": "border-l-sky-500",
@@ -51,7 +51,7 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
         {/* todos os dados preenchidos na aba Dados (inclusive campos novos criados no PC) */}
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
           {Object.entries(d)
-            .filter(([k, v]) => v && k !== "Nome do bebê" && !HIDDEN_IN_DADOS.includes(k))
+            .filter(([k, v]) => v && k !== "Nome do bebê" && !HIDDEN_IN_RESUMO_TOP.includes(k))
             .map(([k, v]) => (
               <div key={k} className="contents">
                 <dt className="text-muted-foreground">{k}</dt>
@@ -59,7 +59,7 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
               </div>
             ))}
         </dl>
-        {Object.entries(d).filter(([k, v]) => v && k !== "Nome do bebê" && !HIDDEN_IN_DADOS.includes(k)).length === 0 && (
+        {Object.entries(d).filter(([k, v]) => v && k !== "Nome do bebê" && !HIDDEN_IN_RESUMO_TOP.includes(k)).length === 0 && (
           <p className="text-muted-foreground">Nenhum dado preenchido. <button className="underline" onClick={() => onGo("dados")}>Preencher</button></p>
         )}
         {pos && (

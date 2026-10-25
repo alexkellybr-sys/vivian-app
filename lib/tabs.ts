@@ -3,6 +3,8 @@
 
 export type FieldDef = {
   name: string
+  label?: string // texto na tela (se for diferente do nome na planilha)
+  readOnly?: boolean
   input?: "text" | "textarea" | "select"
   options?: string[]
   inputMode?: "text" | "numeric" | "decimal" | "tel"
@@ -72,7 +74,7 @@ export const TABS: TabDef[] = [
 
 // campos da aba Dados que têm opções fixas
 export const DADOS_OPTIONS: Record<string, string[]> = {
-  Sexo: ["Feminino", "Masculino", "Indeterminado"],
+  Sexo: ["Feminino", "Masculino"],
 }
 
 // nomes prontos na aba Vacinas (dá para digitar outra)
@@ -82,7 +84,7 @@ export const VACINAS = ["BCG", "Hepatite B"]
 export const BIRTH_FIELD = "Data de nascimento" // "dd/MM/aaaa HH:mm"
 export const ANAMNESE_FIELDS: FieldDef[] = [
   { name: "Tipo de parto", input: "select", options: ["Vaginal", "Cesárea", "Fórceps"] },
-  { name: "Sexo", input: "select", options: ["Feminino", "Masculino", "Indeterminado"] },
+  { name: "Sexo", input: "select", options: ["Feminino", "Masculino"] },
   { name: "Peso ao nascer (g)", inputMode: "numeric", placeholder: "Ex: 3200" },
   { name: "Estatura (cm)", inputMode: "decimal", placeholder: "Ex: 49" },
   { name: "PC (cm)", inputMode: "decimal", placeholder: "Perímetro cefálico" },
@@ -95,8 +97,16 @@ export const ANAMNESE_FIELDS: FieldDef[] = [
 ]
 export const ALTA_FIELDS = ["Alta", "Especialista da alta", "Observações da alta"]
 // estes não aparecem na aba Dados (têm aba própria)
-export const HIDDEN_IN_DADOS = [BIRTH_FIELD, ...ANAMNESE_FIELDS.map((f) => f.name), ...ALTA_FIELDS]
-// campos básicos que sempre aparecem na aba Dados
-export const BASE_FIELDS = ["Nome do bebê", "Nome da mãe", "Enfermaria", "Leito", "Telefone de emergência", "GPS (IMEI)"]
+// Sexo e DNV aparecem nas duas abas (é o mesmo dado); o IMEI do rastreador fica na aba GPS
+export const SHARED_WITH_DADOS = ["Sexo", "DNV"]
+export const IMEI_FIELD = "GPS (IMEI)"
+export const HIDDEN_IN_DADOS = [BIRTH_FIELD, ...ANAMNESE_FIELDS.map((f) => f.name).filter((n) => !SHARED_WITH_DADOS.includes(n)), ...ALTA_FIELDS, IMEI_FIELD]
+// no Resumo, os campos da anamnese aparecem no bloco Anamnese (não repetir em cima)
+export const HIDDEN_IN_RESUMO_TOP = [BIRTH_FIELD, ...ANAMNESE_FIELDS.map((f) => f.name), ...ALTA_FIELDS]
+// campos básicos que sempre aparecem na aba Dados, nesta ordem
+export const BASE_FIELDS = ["Nome da mãe", "Nome do bebê", "Enfermaria", "Leito", "Sexo", "DNV", "Telefone de emergência"]
+// como cada campo aparece na aba Dados
+export const DADOS_LABELS: Record<string, string> = { DNV: "Número da DNV" }
+export const DADOS_READONLY = ["DNV"] // vem da Anamnese
 
 export const NAME_FIELD = "Nome do bebê"

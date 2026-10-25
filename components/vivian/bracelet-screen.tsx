@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Heart, RefreshCw, Trash2 } from "lucide-react"
 import { api, cacheGet, cacheSet } from "@/lib/client"
-import { BASE_FIELDS, DADOS_OPTIONS, HIDDEN_IN_DADOS, NAME_FIELD, TABS, type FieldDef, type TabDef } from "@/lib/tabs"
+import { BASE_FIELDS, DADOS_LABELS, DADOS_OPTIONS, DADOS_READONLY, HIDDEN_IN_DADOS, IMEI_FIELD, NAME_FIELD, TABS, type FieldDef, type TabDef } from "@/lib/tabs"
 import type { Bracelet, HistoryEntry } from "@/lib/types"
 import { GoldButton } from "./gold-button"
 import { GpsTab } from "./gps-tab"
@@ -184,7 +184,8 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved, canErase }: P
           <ChecklistTab key={`${nfc}-${current.id}`} nfc={nfc} tab={current} history={bracelet.historico} onSaved={updated} />
         ) : (
           <>
-            <GpsTab nfc={nfc} imei={bracelet.dados["GPS (IMEI)"] || ""} />
+            <GpsTab nfc={nfc} imei={bracelet.dados[IMEI_FIELD] || ""} />
+            <ImeiCard key={nfc} bracelet={bracelet} onSaved={updated} />
             <History entries={bracelet.historico} aba="GPS" title="Histórico de alarmes" />
           </>
         )}
@@ -257,7 +258,7 @@ function DadosTab({ bracelet, onSaved }: { bracelet: Bracelet; onSaved: (b: Brac
   return (
     <Card>
       {fields.map((f) => (
-        <Field key={f} def={{ name: f, input: DADOS_OPTIONS[f] ? "select" : "text", options: DADOS_OPTIONS[f], inputMode: /telefone/i.test(f) ? "tel" : "text" }} value={form[f] ?? ""} onChange={(v) => setForm((c) => ({ ...c, [f]: v }))} />
+        <Field key={f} def={{ name: f, label: DADOS_LABELS[f], readOnly: DADOS_READONLY.includes(f), placeholder: DADOS_READONLY.includes(f) ? "preencha na aba Anamnese" : undefined, input: DADOS_OPTIONS[f] ? "select" : "text", options: DADOS_OPTIONS[f], inputMode: /telefone/i.test(f) ? "tel" : "text" }} value={form[f] ?? ""} onChange={(v) => setForm((c) => ({ ...c, [f]: v }))} />
       ))}
       <div className="flex gap-2 items-end mb-3">
         <label className="flex-1">
@@ -357,7 +358,7 @@ export function Card({ children }: { children: React.ReactNode }) {
 function Field({ def, value, onChange }: { def: FieldDef; value: string; onChange: (v: string) => void }) {
   return (
     <label className="block mb-3">
-      <span className="block text-[13px] mb-1 font-bold">{def.name}</span>
+      <span className="block text-[13px] mb-1 font-bold">{def.label || def.name}</span>
       {def.input === "textarea" ? (
         <textarea rows={3} className={inputCls} value={value} placeholder={def.placeholder} onChange={(e) => onChange(e.target.value)} />
       ) : def.input === "select" ? (
@@ -367,9 +368,24 @@ function Field({ def, value, onChange }: { def: FieldDef; value: string; onChang
           {value && !def.options?.includes(value) && <option>{value}</option>}
         </select>
       ) : (
-        <input className={inputCls} value={value} inputMode={def.inputMode} placeholder={def.placeholder} onChange={(e) => onChange(e.target.value)} />
+        <input className={`${inputCls} ${def.readOnly ? "bg-muted/40" : ""}`} readOnly={def.readOnly} value={value} inputMode={def.inputMode} placeholder={def.placeholder} onChange={(e) => onChange(e.target.value)} />
       )}
     </label>
+  )
+}
+
+// IMEI do rastreador GPS (antes ficava na aba Dados)
+function ImeiCard({ bracelet, onSaved }: { bracelet: Bracelet; onSaved: (b: Bracelet) => void }) {
+  const [imei, setImei] = useState(bracelet.dados[IMEI_FIELD] || "")
+  const [status, setStatus] = useState<Status>(null)
+  const changed = imei.trim() !== (bracelet.dados[IMEI_FIELD] || "")
+  return (
+    <div className="mt-4">
+      <Card>
+        <Field def={{ name: IMEI_FIELD, label: "IMEI do rastreador GPS", inputMode: "numeric", placeholder: "número do aparelho GF-07" }} value={imei} onChange={setImei} />
+        <SaveButton status={status} disabled={!changed} onClick={() => run(setStatus, async () => onSaved(await api.save({ nfc: bracelet.nfc, aba: "Dados", dados: { [IMEI_FIELD]: imei.trim() } })))} />
+      </Card>
+    </div>
   )
 }
 

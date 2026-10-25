@@ -159,7 +159,7 @@ export function GpsTab({ nfc, imei }: { nfc: string; imei: string }) {
       <div className="bg-card rounded-[18px] border-2 border-primary p-4 space-y-3">
         <h4 className="font-bold text-sm uppercase">Posição da pulseira</h4>
         <p className="text-xs">
-          <b>Rastreador:</b> {imei ? `IMEI ${imei}` : "nenhum ligado (preencha “GPS (IMEI)” na aba Dados)"} ·{" "}
+          <b>Rastreador:</b> {imei ? `IMEI ${imei}` : "nenhum ligado (preencha o IMEI no fim desta aba)"} ·{" "}
           {rastreador ? "servidor de rastreamento conectado" : "servidor de rastreamento não configurado"}
         </p>
         <label className="flex items-center gap-2 text-sm">
