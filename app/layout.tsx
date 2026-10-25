@@ -5,7 +5,7 @@ import { asset } from "@/lib/config"
 export const metadata: Metadata = {
   title: "Vívian - Controle Neonatal",
   description: "Programa para o controle Neonatal",
-  icons: { icon: asset("/icon.svg"), apple: asset("/apple-icon.png") },
+  icons: { icon: [{ url: asset("/favicon.ico"), sizes: "any" }, { url: asset("/icon-32.png"), type: "image/png", sizes: "32x32" }, { url: asset("/icon-192.png"), type: "image/png", sizes: "192x192" }], apple: asset("/apple-icon.png") },
 }
 
 export const viewport: Viewport = {
