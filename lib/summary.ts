@@ -16,9 +16,9 @@ const VITALS: { campo: string; short: string; unit: string }[] = [
 
 // "25/10/2026 14:00" ou "25/10/2026 14:00:00" → Date (horário local)
 export function parseStamp(s: string): Date | null {
-  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\D+(\d{1,2}):(\d{2}))?/)
+  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\D+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/)
   if (!m) return null
-  return new Date(+m[3], +m[2] - 1, +m[1], m[4] ? +m[4] : 12, m[5] ? +m[5] : 0)
+  return new Date(+m[3], +m[2] - 1, +m[1], m[4] ? +m[4] : 12, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0)
 }
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
@@ -60,8 +60,12 @@ export function buildSummary(b: Bracelet, now = new Date()) {
 
   // situação atual
   const vitals = VITALS.map((v) => {
-    const values = recs.flatMap((r) => (r.aba === "Sinais vitais" ? r.items.filter((i) => i.campo === v.campo).map((i) => ({ valor: i.valor, date: r.date })) : []))
-    return { ...v, last: values[0], previous: values[1] }
+    // direto do histórico (já vem do mais novo para o mais antigo), um valor por linha
+    const values = b.historico
+      .filter((e) => e.aba === "Sinais vitais" && e.campo === v.campo && e.valor)
+      .map((e) => ({ valor: e.valor, date: parseStamp(e.data) || new Date(0) }))
+    // values[0] = mais recente; o último da lista = primeiro da internação (ex.: temperatura inicial)
+    return { ...v, last: values[0], previous: values[1], first: values.length > 1 ? values[values.length - 1] : undefined }
   }).filter((v) => v.last)
   const lastObs = recs.find((r) => r.aba === "Sinais vitais" && r.items.some((i) => i.campo === "Observação"))
   const allergies = recs.filter((r) => r.aba === "Alergias")
@@ -70,7 +74,8 @@ export function buildSummary(b: Bracelet, now = new Date()) {
   const meds = recs.filter((r) => r.aba === "Medicações" && now.getTime() - r.date.getTime() <= dayMs)
   const incidents = recs.filter((r) => r.aba === "Intercorrências" && now.getTime() - r.date.getTime() <= 3 * dayMs)
   const conference = recs.find((r) => r.aba === "Conferência")
-  const anamnese = recs.find((r) => r.aba === "Anamnese")
+  const anamnese = recs.filter((r) => r.aba === "Anamnese")
+  const alergiaCount = allergies.length
 
   // dia a dia (mais novo primeiro)
   const days: Day[] = []
@@ -103,6 +108,7 @@ export function buildSummary(b: Bracelet, now = new Date()) {
     incidents,
     conference,
     anamnese,
+    alergiaCount,
     days,
   }
 }

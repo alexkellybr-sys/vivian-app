@@ -31,14 +31,21 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
     <div className="space-y-3">
       {/* identificação */}
       <div className="bg-card rounded-[18px] border-2 border-primary p-4 text-sm">
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {s.dayOfStay && <span className="font-bold">📅 Dia {s.dayOfStay} de internação</span>}
-          {d["Data de nascimento"] && <span>Nasceu: {d["Data de nascimento"]}</span>}
-          {d["Sexo"] && <span>{d["Sexo"]}</span>}
-          {d["Leito"] && <span>Leito {d["Leito"]}</span>}
-          {d["Nome da mãe"] && <span>Mãe: {d["Nome da mãe"]}</span>}
-          {d["Telefone de emergência"] && <span>☎ {d["Telefone de emergência"]}</span>}
-        </div>
+        {s.dayOfStay && <p className="font-bold mb-2">📅 Dia {s.dayOfStay} de internação</p>}
+        {/* todos os dados preenchidos na aba Dados (inclusive campos novos criados no PC) */}
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+          {Object.entries(d)
+            .filter(([k, v]) => v && k !== "Nome do bebê")
+            .map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="text-muted-foreground">{k}</dt>
+                <dd className="font-semibold break-words">{v}</dd>
+              </div>
+            ))}
+        </dl>
+        {Object.entries(d).filter(([k, v]) => v && k !== "Nome do bebê").length === 0 && (
+          <p className="text-muted-foreground">Nenhum dado preenchido. <button className="underline" onClick={() => onGo("dados")}>Preencher</button></p>
+        )}
         {pos && (
           <p className={`mt-2 font-bold ${pos.situacao === "FORA" ? "text-red-600" : "text-green-700"}`}>
             GPS: {pos.situacao === "FORA" ? `FORA DA ÁREA – setor ${pos.setor}, ${pos.distancia} m` : pos.situacao === "dentro" ? "dentro da área" : pos.situacao}
@@ -72,12 +79,17 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
                     {Number.isFinite(before) && now !== before && (now > before ? <ArrowUp className="inline w-3 h-3" /> : <ArrowDown className="inline w-3 h-3" />)}
                   </p>
                   <p className="text-[10px] text-muted-foreground">{fmtDate(v.last!.date)}{v.previous ? ` · antes ${v.previous.valor}` : ""}</p>
+                  {v.first && v.first !== v.previous && <p className="text-[10px] text-muted-foreground">inicial {v.first.valor} ({fmtDate(v.first.date)})</p>}
                 </div>
               )
             })}
           </div>
         )}
         {s.lastObs && <p className="text-xs mt-2">📝 {s.lastObs.items.find((i) => i.campo === "Observação")?.valor} <span className="text-muted-foreground">({s.lastObs.time}, {s.lastObs.usuario})</span></p>}
+      </Block>
+
+      <Block title="Anamnese" icon={<Stethoscope className="w-4 h-4" />} onAdd={() => onGo("anamnese")}>
+        {s.anamnese.length === 0 ? <p className="text-sm text-muted-foreground">Sem anamnese registrada.</p> : s.anamnese.slice(0, 3).map((r, i) => <Line key={i} r={r} />)}
       </Block>
 
       <Block title="Diagnóstico" icon={<Stethoscope className="w-4 h-4" />} onAdd={() => onGo("diagnostico")}>
