@@ -17,7 +17,7 @@
 
 const TRACCAR_URL = ""   // ex.: "https://demo.traccar.org"
 const TRACCAR_TOKEN = "" // token da conta no Traccar (Configurações da conta → Token)
-const SESSION_HOURS = 12
+const SESSION_MINUTES = 60 // sai sozinho depois de 60 min sem uso
 
 const INDEX = "Pulseiras"
 const FENCES = "Cercas"
@@ -110,19 +110,32 @@ function login_(nome, pin) {
   const now = Date.now()
   const all = props.getProperties()
   Object.keys(all).forEach(function (k) { if (k.indexOf("s_") === 0) { try { if (JSON.parse(all[k]).exp < now) props.deleteProperty(k) } catch (e) { props.deleteProperty(k) } } })
+  // um aparelho por usuário: a sessão anterior desta pessoa é encerrada
+  Object.keys(all).forEach(function (k) {
+    if (k.indexOf("s_") !== 0) return
+    try { const o = JSON.parse(all[k]); if (o.u === u.nome && !o.kicked) props.setProperty(k, JSON.stringify({ u: o.u, exp: now + 6 * 3600000, kicked: true })) } catch (e) {}
+  })
   const token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "")
-  props.setProperty("s_" + token, JSON.stringify({ u: u.nome, exp: now + SESSION_HOURS * 3600000 }))
+  props.setProperty("s_" + token, JSON.stringify({ u: u.nome, exp: now + SESSION_MINUTES * 60000 }))
   ss_().getSheetByName(USERS).getRange(u.row, 4).setValue(now_())
   return { ok: true, sessao: token, usuario: u.nome }
 }
-function session_(token) {
+let AUTH_REASON = ""
+function session_(token, renew) {
+  AUTH_REASON = "Sessão expirada. Entre de novo."
   if (!token || !/^[0-9a-f]{64}$/i.test(token)) return null
-  const raw = PropertiesService.getScriptProperties().getProperty("s_" + token)
+  const props = PropertiesService.getScriptProperties()
+  const raw = props.getProperty("s_" + token)
   if (!raw) return null
   const s = JSON.parse(raw)
-  if (s.exp < Date.now()) return null
+  if (s.kicked) { AUTH_REASON = "Você entrou com este usuário em outro aparelho. Aqui a sessão foi encerrada."; return null }
+  const now = Date.now()
+  if (s.exp < now) { AUTH_REASON = "Saiu sozinho depois de 1 hora sem uso. Entre de novo."; return null }
   const u = users_().filter(function (x) { return x.nome === s.u })[0]
-  return u && u.ativo ? s.u : null // desativar o usuário na planilha corta o acesso na hora
+  if (!u || !u.ativo) { AUTH_REASON = "Usuário desativado na planilha."; return null } // desativar corta o acesso na hora
+  // uso real (não a consulta automática do GPS) renova os 60 min; grava no máximo a cada 5 min
+  if (renew !== false && s.exp - now < (SESSION_MINUTES - 5) * 60000) props.setProperty("s_" + token, JSON.stringify({ u: s.u, exp: now + SESSION_MINUTES * 60000 }))
+  return s.u
 }
 function logout_(token) { if (token) PropertiesService.getScriptProperties().deleteProperty("s_" + token) }
 
@@ -444,8 +457,8 @@ function doGet(e) {
   try {
     if (!p.s && !p.action) return json_({ ok: true, app: "Vivian", versao: 3 })
     ensureSetup_()
-    const user = session_(p.s)
-    if (!user) return json_({ ok: false, auth: true, error: "Sessão expirada. Entre de novo." })
+    const user = session_(p.s, p.poll !== "1")
+    if (!user) return json_({ ok: false, auth: true, error: AUTH_REASON })
     if (p.action === "list") return json_({ ok: true, pulseiras: list_() })
     if (p.action === "fences") return json_({ ok: true, cercas: fences_() })
     if (p.action === "positions") return json_({ ok: true, posicoes: positions_() })
@@ -468,8 +481,8 @@ function doPost(e) {
     ensureSetup_()
     if (b.action === "login") return json_(login_(b.usuario || "", b.pin || ""))
     if (b.action === "logout") { logout_(b.s); return json_({ ok: true }) }
-    const user = session_(b.s)
-    if (!user) return json_({ ok: false, auth: true, error: "Sessão expirada. Entre de novo." })
+    const user = session_(b.s, true)
+    if (!user) return json_({ ok: false, auth: true, error: AUTH_REASON })
     if (b.action === "fence") { saveFence_(b.cerca || {}); return json_({ ok: true, cercas: fences_() }) }
     if (b.action === "position") { const ev = savePosition_(b.posicao || {}, user); return json_({ ok: true, avaliacao: ev }) }
     if (b.action === "create") {

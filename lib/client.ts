@@ -26,7 +26,7 @@ async function parse(response: Response) {
   if (!data.ok) {
     if (data.auth) {
       setSession(null)
-      window.dispatchEvent(new Event("vivian-auth"))
+      window.dispatchEvent(new CustomEvent("vivian-auth", { detail: data.error }))
     }
     throw new ApiError(data.error || "Erro na planilha.", !!data.notFound, undefined, !!data.auth)
   }
@@ -84,7 +84,8 @@ export const api = {
   },
   save: (body: { nfc: string; aba?: string; dados?: Record<string, string>; registros?: { campo: string; valor: string }[]; criar?: boolean }) =>
     post(body.criar ? { action: "create", nfc: body.nfc, dados: body.dados || {} } : { action: "save", ...body }).then((d) => d.pulseira as Bracelet),
-  gps: () => get({ action: "gps" }) as Promise<GpsState & { rastreador: boolean }>,
+  // poll=1: a consulta automática do GPS não conta como "uso" (senão a sessão nunca expiraria)
+  gps: () => get({ action: "gps", poll: "1" }) as Promise<GpsState & { rastreador: boolean }>,
   saveFence: (cerca: Partial<Fence> & { nome: string; apagar?: boolean }) => post({ action: "fence", cerca }).then((d) => d.cercas as Fence[]),
   sendPosition: (p: { nfc: string; lat: number; lng: number; acc?: number; fonte: string }) =>
     post({ action: "position", posicao: p }) as Promise<{ avaliacao: { situacao: string; setor: string; distancia: number; cerca?: string } }>,

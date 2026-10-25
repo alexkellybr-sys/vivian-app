@@ -1,8 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Bell, Home, Monitor, Settings, User, Users } from "lucide-react"
+import { Bell, Home, Settings, User, Users } from "lucide-react"
 import { api, cacheGet, cacheSet, getNurse, isLoggedIn } from "@/lib/client"
+import { asset } from "@/lib/config"
 import type { ScreenId } from "@/lib/screens"
 import type { Bracelet, BraceletSummary } from "@/lib/types"
 import { NAME_FIELD } from "@/lib/tabs"
@@ -80,10 +81,20 @@ export function AppShell({ painel = false }: { painel?: boolean }) {
     if (isLoggedIn()) {
       if (fromTag) {
         setScreen("home")
+        // guarda antes: se a sessão tiver vencido, abre esta pulseira logo depois do login
+        sessionStorage.setItem("vivian-pending-nfc", fromTag)
         api
           .get([fromTag])
-          .then((b) => openBracelet(b.nfc))
-          .catch((e) => (e?.notFound ? notFound(e.nfc || fromTag) : setListError(e.message)))
+          .then((b) => {
+            sessionStorage.removeItem("vivian-pending-nfc")
+            openBracelet(b.nfc)
+          })
+          .catch((e) => {
+            if (e?.auth) return
+            sessionStorage.removeItem("vivian-pending-nfc")
+            if (e?.notFound) notFound(e.nfc || fromTag)
+            else setListError(e.message)
+          })
       } else if (painel) setScreen("list")
       else setScreen("home")
     } else if (fromTag || painel) {
@@ -125,8 +136,8 @@ export function AppShell({ painel = false }: { painel?: boolean }) {
 
   // sessão expirou / usuário desativado na planilha → volta para o login
   useEffect(() => {
-    const onAuth = () => {
-      setLoginNotice("Sua sessão terminou. Entre de novo com seu PIN.")
+    const onAuth = (e: Event) => {
+      setLoginNotice((e as CustomEvent<string>).detail || "Sua sessão terminou. Entre de novo com seu PIN.")
       setScreen((s) => (LOGGED_SCREENS.includes(s) ? "login" : s))
     }
     window.addEventListener("vivian-auth", onAuth)
@@ -250,7 +261,8 @@ function DesktopBar({ screen, onNavigate }: { screen: ScreenId; onNavigate: (s: 
   return (
     <header className="bg-gradient-to-br from-accent via-[#F9E498] to-primary px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-3 font-bold text-lg">
-        <Monitor className="w-5 h-5" /> VIVIAN · Painel de pulseiras
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={asset("/images/vivian-splash.jpg")} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-white shadow" /> VIVIAN · Painel de pulseiras
       </div>
       <div className="flex items-center gap-2">
         {!soundReady && (

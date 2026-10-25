@@ -9,6 +9,13 @@ export function LoginScreen({ onLogin, notice }: { onLogin: (user: string) => vo
   const [pin, setPin] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(notice || null)
+  const [pending] = useState(() => {
+    try {
+      return sessionStorage.getItem("vivian-pending-nfc")
+    } catch {
+      return null
+    }
+  })
   const input = "w-full p-3 rounded-[15px] border border-primary bg-white outline-none text-base"
 
   const submit = async (e: React.FormEvent) => {
@@ -28,6 +35,11 @@ export function LoginScreen({ onLogin, notice }: { onLogin: (user: string) => vo
   return (
     <div className="flex-1 overflow-y-auto pb-20 flex flex-col justify-center">
       <form className="bg-card mx-5 p-5 rounded-[25px] border-2 border-primary backdrop-blur-sm" onSubmit={submit}>
+        {pending && (
+          <p className="mb-4 text-sm rounded-[12px] bg-accent/20 border border-accent px-3 py-2">
+            Pulseira <b>{pending.replace(/^0+/, "")}</b> lida. Entre com seu usuário e PIN para abrir o bebê.
+          </p>
+        )}
         <label className="block mb-4">
           <span className="block text-[13px] mb-1 font-bold">Usuário</span>
           <input className={input} value={user} onChange={(e) => setUser(e.target.value)} autoComplete="username" placeholder="ex.: Enf. Maria" />
