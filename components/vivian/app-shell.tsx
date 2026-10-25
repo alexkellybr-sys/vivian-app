@@ -165,7 +165,7 @@ export function AppShell({ painel = false }: { painel?: boolean }) {
   }
   const detail =
     screen === "bracelet" && selected ? (
-      <BraceletScreen nfc={selected} tabId={tab} onTabChange={setTab} onSaved={onSaved} />
+      <BraceletScreen nfc={selected} tabId={tab} onTabChange={setTab} onSaved={onSaved} canErase={desktop} />
     ) : screen === "alerts" ? (
       <AlertsScreen onOpen={(n) => openBracelet(n, "gps")} />
     ) : screen === "profile" ? (

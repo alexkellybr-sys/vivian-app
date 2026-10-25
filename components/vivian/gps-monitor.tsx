@@ -153,7 +153,7 @@ export function GpsProvider({ children, enabled, onOpenBracelet }: { children: R
       setApplying(doseKey(d))
       setDoseError(null)
       try {
-        const r = await api.agenda({ id: d.item.id, aplicar: d.dia })
+        const r = await api.agenda({ id: d.item.id, aplicar: d.key })
         setState((c) => (c ? { ...c, agenda: r.agenda } : c))
         if (r.pulseira) window.dispatchEvent(new CustomEvent("vivian-bracelet", { detail: r.pulseira }))
       } catch (e) {
@@ -193,7 +193,7 @@ export function GpsProvider({ children, enabled, onOpenBracelet }: { children: R
                 </div>
                 <p className="mt-1 text-sm leading-snug">
                   <b>{d.item.vacina}</b> · {d.item.bebe ? <b>{d.item.bebe} · </b> : null}pulseira {d.item.nfc} · {fmtDose(d)}
-                  {d.item.dias > 1 && <> · dose {d.item.aplicadas.length + 1} de {d.item.dias}</>}
+                  {d.total > 1 && <> · dose {d.n} de {d.total}</>}
                 </p>
                 {doseError && <p className="text-xs mt-1 bg-white/20 rounded px-2 py-1">{doseError}</p>}
                 <div className="mt-3 flex gap-2">

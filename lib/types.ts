@@ -49,8 +49,9 @@ export type AgendaItem = {
   data: string // dd/MM/yyyy
   horario: string // HH:mm
   dias: number
+  intervalo: number // horas entre as doses (0 = dose única)
   alarme: boolean
-  aplicadas: string[] // dd/MM/yyyy de cada dose aplicada
+  aplicadas: string[] // "dd/MM/yyyy HH:mm" de cada dose aplicada (antigas: só dd/MM/yyyy)
   situacao: string // Programada | Concluída
   por: string
 }

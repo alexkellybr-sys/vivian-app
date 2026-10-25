@@ -16,6 +16,7 @@ export type TabDef =
   | { id: string; label: string; kind: "checklist"; items: string[] }
   | { id: string; label: string; kind: "gps" }
   | { id: string; label: string; kind: "vacinas" }
+  | { id: string; label: string; kind: "coracao" }
 
 export const TABS: TabDef[] = [
   { id: "resumo", label: "Resumo", kind: "resumo" },
@@ -33,18 +34,7 @@ export const TABS: TabDef[] = [
       { name: "Observação", input: "textarea" },
     ],
   },
-  {
-    id: "coracao",
-    label: "Teste do coraçãozinho",
-    kind: "registro",
-    fields: [
-      { name: "Horas de vida", inputMode: "numeric", placeholder: "ex.: 30" },
-      { name: "SatO2 mão direita (%)", inputMode: "numeric" },
-      { name: "SatO2 pé (%)", inputMode: "numeric" },
-      { name: "Resultado", input: "select", options: ["Normal", "Repetir em 1 hora", "Alterado – encaminhar"] },
-      { name: "Observação", input: "textarea" },
-    ],
-  },
+  { id: "coracao", label: "Teste do coraçãozinho", kind: "coracao" },
   {
     id: "intercorrencias",
     label: "Intercorrências",

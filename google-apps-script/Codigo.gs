@@ -451,25 +451,33 @@ function positions_() {
 }
 
 // ───────────────────────── agenda de vacinas (alarme no app) ─────────────────────────
+// Cada linha: 1ª dose em Data + Horário, repete "A cada (h)" horas durante "Dias" dias (A cada = 0 → dose única).
 const AGENDA = "Agenda"
-const AGENDA_HEADERS = ["ID", "Pulseira", "Bebê", "Vacina", "Data", "Horário", "Dias", "Alarme", "Doses aplicadas", "Situação", "Programado por", "Atualizado"]
+const AGENDA_HEADERS = ["ID", "Pulseira", "Bebê", "Vacina", "Data", "Horário", "Dias", "Alarme", "Doses aplicadas", "Situação", "Programado por", "Atualizado", "A cada (h)"]
 function agendaSheet_() {
   let s = ss_().getSheetByName(AGENDA)
   if (!s) {
     s = ss_().insertSheet(AGENDA)
     s.getRange(1, 1, 1000, AGENDA_HEADERS.length).setNumberFormat("@") // datas ficam como texto
     header_(s, "VIVIAN – Agenda de vacinas (o app avisa na hora marcada)", AGENDA_HEADERS)
+  } else if (!str_(s.getRange(2, AGENDA_HEADERS.length).getValue())) {
+    // aba criada pela versão anterior: acrescenta a coluna "A cada (h)"
+    s.getRange(1, AGENDA_HEADERS.length, 1000, 1).setNumberFormat("@")
+    s.getRange(2, AGENDA_HEADERS.length).setValue("A cada (h)").setFontWeight("bold").setBackground("#F9E498")
   }
   return s
 }
+// linhas antigas (sem "A cada"): uma dose por dia
+function interval_(r) { return r[12] === "" ? ((Number(r[6]) || 1) > 1 ? 24 : 0) : Math.max(0, Number(r[12]) || 0) }
+function totalDoses_(dias, intervalo) { return intervalo > 0 ? Math.max(1, Math.min(200, Math.floor(dias * 24 / intervalo))) : 1 }
 function agenda_() {
-  return rows_(agendaSheet_(), FIRST_ROW, 1, AGENDA_HEADERS.length).filter(function (r) { return r[0] && r[9] !== "Cancelada" }).slice(-300).map(function (r) {
-    return { id: r[0], nfc: r[1], bebe: r[2], vacina: r[3], data: r[4], horario: r[5], dias: Number(r[6]) || 1, alarme: r[7] !== "Não",
+  return rows_(agendaSheet_(), FIRST_ROW, 1, AGENDA_HEADERS.length).filter(function (r) { return r[0] && r[9] !== "Cancelada" && r[9] !== "Arquivada" }).slice(-300).map(function (r) {
+    return { id: r[0], nfc: r[1], bebe: r[2], vacina: r[3], data: r[4], horario: r[5], dias: Number(r[6]) || 1, intervalo: interval_(r), alarme: r[7] !== "Não",
       aplicadas: r[8] ? r[8].split(/\s*,\s*/).filter(String) : [], situacao: r[9], por: r[10] }
   })
 }
-// a = { nfc, vacina, data "dd/MM/yyyy", horario "HH:mm", dias, alarme }  → programa
-// a = { id, aplicar: "dd/MM/yyyy" } → marca a dose do dia como aplicada;  a = { id, cancelar: true } → cancela
+// a = { nfc, vacina, data "dd/MM/yyyy", horario "HH:mm", intervalo (h), dias, alarme } → programa
+// a = { id, aplicar: "dd/MM/yyyy HH:mm" } → marca essa dose como aplicada;  a = { id, cancelar: true } → cancela
 function saveAgenda_(a, user) {
   const s = agendaSheet_()
   const stamp = now_()
@@ -485,12 +493,12 @@ function saveAgenda_(a, user) {
       return sheet
     }
     const dose = String(a.aplicar || "")
-    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dose)) throw new Error("Dose inválida.")
+    if (!/^\d{2}\/\d{2}\/\d{4}( \d{2}:\d{2})?$/.test(dose)) throw new Error("Dose inválida.")
     const done = r[8] ? r[8].split(/\s*,\s*/).filter(String) : []
     if (done.indexOf(dose) < 0) done.push(dose)
-    const status = done.length >= (Number(r[6]) || 1) ? "Concluída" : "Programada"
+    const status = done.length >= totalDoses_(Number(r[6]) || 1, interval_(r)) ? "Concluída" : "Programada"
     s.getRange(FIRST_ROW + i, 9, 1, 4).setValues([[done.join(", "), status, r[10], stamp]])
-    if (sheet) appendHistory_(sheet, [[stamp, "Vacinas", "Aplicada", r[3] + " – dose de " + dose + " " + r[5], user]])
+    if (sheet) appendHistory_(sheet, [[stamp, "Vacinas", "Aplicada", r[3] + " – dose de " + (dose.length > 10 ? dose : dose + " " + r[5]), user]])
     return sheet
   }
   const sheet = braceletSheet_(a.nfc)
@@ -498,22 +506,85 @@ function saveAgenda_(a, user) {
   const vacina = String(a.vacina || "").trim().slice(0, 80)
   const data = String(a.data || "")
   const horario = String(a.horario || "")
-  const dias = Math.max(1, Math.min(60, Number(a.dias) || 1))
+  const intervalo = Math.max(0, Math.min(168, Number(a.intervalo) || 0))
+  const dias = intervalo ? Math.max(1, Math.min(60, Number(a.dias) || 1)) : 1
   if (!vacina) throw new Error("Informe o nome da vacina.")
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(data) || !/^\d{2}:\d{2}$/.test(horario)) throw new Error("Informe a data e o horário.")
   const bebe = (list_().filter(function (p) { return key_(p.nfc) === key_(sheet.getName()) })[0] || {}).bebe || ""
   const id = Utilities.getUuid().replace(/-/g, "").slice(0, 10)
-  const aplicadas = a.aplicadaAgora ? data : ""
-  const status = a.aplicadaAgora && dias === 1 ? "Concluída" : "Programada"
+  const total = totalDoses_(dias, intervalo)
+  const aplicadas = a.aplicadaAgora ? data + " " + horario : ""
+  const status = a.aplicadaAgora && total === 1 ? "Concluída" : "Programada"
   s.getRange(Math.max(s.getLastRow() + 1, FIRST_ROW), 1, 1, AGENDA_HEADERS.length)
-    .setValues([[id, sheet.getName(), bebe, vacina, data, horario, String(dias), a.alarme === false ? "Não" : "Sim", aplicadas, status, user, stamp].map(safe_)])
+    .setValues([[id, sheet.getName(), bebe, vacina, data, horario, String(dias), a.alarme === false ? "Não" : "Sim", aplicadas, status, user, stamp, String(intervalo)].map(safe_)])
   const hist = a.aplicadaAgora
     ? [[stamp, "Vacinas", "Aplicada", vacina + " – " + data + " " + horario, user]]
-    : [[stamp, "Vacinas", "Vacina", vacina, user], [stamp, "Vacinas", "Programada para", data + " " + horario, user],
-       [stamp, "Vacinas", "Dias", String(dias), user], [stamp, "Vacinas", "Alarme", a.alarme === false ? "Não" : "Sim", user]]
+    : [[stamp, "Vacinas", "Vacina", vacina, user], [stamp, "Vacinas", "1ª dose", data + " " + horario, user],
+       [stamp, "Vacinas", "Repetição", intervalo ? "a cada " + intervalo + " h por " + dias + " dia(s) – " + total + " doses" : "dose única", user],
+       [stamp, "Vacinas", "Alarme", a.alarme === false ? "Não" : "Sim", user]]
   appendHistory_(sheet, hist)
   updateIndex_(sheet.getName(), sheet)
   return sheet
+}
+
+// ───────────────────────── apagar dados (alta) → arquivo no Google Drive ─────────────────────────
+// Copia a aba da pulseira (e as vacinas dela) para uma planilha nova na pasta "Vivian – Arquivo" do Drive,
+// anota na aba "Arquivo" desta planilha e deixa a pulseira vazia (sem nome) para outro bebê.
+const ARCHIVE = "Arquivo"
+const ARCHIVE_FOLDER = "Vivian – Arquivo"
+const ARCHIVE_HEADERS = ["Arquivado em", "Pulseira", "Bebê", "Mãe", "Arquivado por", "Planilha do arquivo"]
+function archiveFolder_() {
+  const it = DriveApp.getFoldersByName(ARCHIVE_FOLDER)
+  return it.hasNext() ? it.next() : DriveApp.createFolder(ARCHIVE_FOLDER)
+}
+function archiveBracelet_(nfc, user) {
+  const sheet = braceletSheet_(nfc)
+  if (!sheet) throw new Error("Pulseira " + nfc + " não cadastrada.")
+  const name = sheet.getName()
+  const b = readBracelet_(sheet)
+  const bebe = b.dados["Nome do bebê"] || "", mae = b.dados["Nome da mãe"] || ""
+  if (!b.historico.length && !Object.keys(b.dados).some(function (k) { return b.dados[k] })) throw new Error("Esta pulseira já está vazia.")
+  const stamp = now_()
+
+  // 1) cópia para o Drive
+  const title = (bebe || "Sem nome") + " – pulseira " + name + " – arquivado " + stamp.replace(/\//g, "-").replace(/:/g, "h").slice(0, 16)
+  const file = SpreadsheetApp.create(title)
+  sheet.copyTo(file).setName("Pulseira " + name)
+  const ag = agendaSheet_()
+  const agRows = rows_(ag, FIRST_ROW, 1, AGENDA_HEADERS.length)
+  const mine = agRows.filter(function (r) { return r[0] && key_(r[1]) === key_(name) })
+  if (mine.length) {
+    const v = file.insertSheet("Vacinas")
+    v.getRange(1, 1, 1, AGENDA_HEADERS.length).setValues([AGENDA_HEADERS]).setFontWeight("bold")
+    v.getRange(2, 1, mine.length, AGENDA_HEADERS.length).setValues(mine.map(function (r) { return r.map(safe_) }))
+  }
+  file.deleteSheet(file.getSheets()[0])
+  DriveApp.getFileById(file.getId()).moveTo(archiveFolder_())
+
+  // 2) registro na aba "Arquivo"
+  let arch = ss_().getSheetByName(ARCHIVE)
+  if (!arch) { arch = ss_().insertSheet(ARCHIVE); header_(arch, "VIVIAN – Bebês arquivados (pasta do Drive: " + ARCHIVE_FOLDER + ")", ARCHIVE_HEADERS) }
+  const row = Math.max(arch.getLastRow() + 1, FIRST_ROW)
+  arch.getRange(row, 1, 1, 5).setValues([[stamp, name, safe_(bebe), safe_(mae), user]])
+  arch.getRange(row, 6).setRichTextValue(SpreadsheetApp.newRichTextValue().setText("Abrir arquivo ▶").setLinkUrl(file.getUrl()).build())
+
+  // 3) vacinas pendentes desta pulseira saem da agenda
+  mine.forEach(function (r) {
+    if (r[9] === "Programada") ag.getRange(FIRST_ROW + agRows.indexOf(r), 10, 1, 3).setValues([["Arquivada", r[10], stamp]])
+  })
+  // 4) última posição do GPS some
+  const pos = ss_().getSheetByName(POSITIONS)
+  const pr = rows_(pos, FIRST_ROW, 1, 1)
+  for (let i = pr.length - 1; i >= 0; i--) if (key_(pr[i][0]) === key_(name)) pos.deleteRow(FIRST_ROW + i)
+
+  // 5) pulseira vazia: só os campos padrão, sem histórico nem resumo
+  const last = Math.max(sheet.getLastRow(), FIRST_ROW)
+  sheet.getRange(FIRST_ROW, 1, last - FIRST_ROW + 1, 2).clearContent()
+  sheet.getRange(FIRST_ROW, HIST_COL, last - FIRST_ROW + 1, 5).clearContent()
+  sheet.getRange(FIRST_ROW, 1, DEFAULT_FIELDS.length, 2).setValues(DEFAULT_FIELDS.map(function (f) { return [f, ""] }))
+  rebuildSummary_(sheet)
+  updateIndex_(name, sheet)
+  return { sheet: sheet, url: file.getUrl(), bebe: bebe }
 }
 
 // ───────────────────────── entradas ─────────────────────────
@@ -537,7 +608,7 @@ function doGet(e) {
   }
 }
 
-// POST (texto JSON) { action: "login"|"logout"|"save"|"create"|"fence"|"position"|"agenda", s: <sessão>, ... }
+// POST (texto JSON) { action: "login"|"logout"|"save"|"create"|"fence"|"position"|"agenda"|"archive", s: <sessão>, ... }
 function doPost(e) {
   let b
   try { b = JSON.parse((e && e.postData && e.postData.contents) || "{}") } catch (err) { return json_({ ok: false, error: "Dados inválidos." }) }
@@ -550,6 +621,12 @@ function doPost(e) {
     const user = session_(b.s, true)
     if (!user) return json_({ ok: false, auth: true, error: AUTH_REASON })
     if (b.action === "fence") { saveFence_(b.cerca || {}); return json_({ ok: true, cercas: fences_() }) }
+    if (b.action === "archive") {
+      if (key_(b.confirmar) !== key_(b.nfc)) return json_({ ok: false, error: "Confirme digitando o número da pulseira." })
+      const r = archiveBracelet_(b.nfc, user)
+      SpreadsheetApp.flush()
+      return json_({ ok: true, pulseira: readBracelet_(r.sheet), arquivo: r.url, bebe: r.bebe })
+    }
     if (b.action === "agenda") {
       const sh = saveAgenda_(b.item || {}, user)
       SpreadsheetApp.flush()
@@ -588,4 +665,10 @@ function prepararAbas() {
   ensureSetup_()
   repararLinks_()
   rows_(ss_().getSheetByName(INDEX), FIRST_ROW, 1, 1).forEach(function (r) { const b = r[0] && braceletSheet_(r[0]); if (b) rebuildSummary_(b) })
+}
+
+// Rode uma vez no editor (▶ Executar) para autorizar o acesso ao Google Drive (pasta "Vivian – Arquivo")
+function autorizarArquivo() {
+  const f = archiveFolder_()
+  Logger.log("Pasta do arquivo pronta: " + f.getUrl())
 }

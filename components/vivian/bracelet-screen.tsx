@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Heart, RefreshCw } from "lucide-react"
+import { Heart, RefreshCw, Trash2 } from "lucide-react"
 import { api, cacheGet, cacheSet } from "@/lib/client"
 import { DADOS_OPTIONS, NAME_FIELD, TABS, type FieldDef, type TabDef } from "@/lib/tabs"
 import type { Bracelet, HistoryEntry } from "@/lib/types"
@@ -9,6 +9,7 @@ import { GoldButton } from "./gold-button"
 import { GpsTab } from "./gps-tab"
 import { SummaryTab } from "./summary-tab"
 import { VacinasTab } from "./vacinas-tab"
+import { CoracaoTab } from "./coracao-tab"
 import { useGps } from "./gps-monitor"
 
 type Props = {
@@ -16,16 +17,19 @@ type Props = {
   tabId?: string
   onTabChange?: (id: string) => void
   onSaved?: (b: Bracelet) => void
+  canErase?: boolean // só no PC
 }
 
 const inputCls = "w-full p-3 rounded-[15px] border border-primary bg-white outline-none text-base"
 
-export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
+export function BraceletScreen({ nfc, tabId, onTabChange, onSaved, canErase }: Props) {
+  const [erasing, setErasing] = useState(false)
+  const [archived, setArchived] = useState<{ bebe: string; url: string } | null>(null)
   const [bracelet, setBracelet] = useState<Bracelet | null>(() => cacheGet<Bracelet>(`b-${nfc}`))
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [tab, setTab] = useState(tabId || "resumo")
-  const { alarms } = useGps()
+  const { alarms, refresh: refreshGps } = useGps()
 
   useEffect(() => setTab(tabId || "resumo"), [tabId])
 
@@ -81,6 +85,8 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inAlarm])
 
+  useEffect(() => setArchived(null), [nfc])
+
   const choose = (id: string) => {
     setTab(id)
     onTabChange?.(id)
@@ -98,10 +104,37 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
           </p>
           {inAlarm && <p className="text-sm font-bold text-red-600 mt-1">⚠️ GPS: fora da área</p>}
         </div>
-        <button aria-label="Atualizar da planilha" onClick={load} disabled={loading} className="p-1">
-          <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {canErase && bracelet && (
+            <button onClick={() => setErasing(true)} className="rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-2 flex items-center gap-1">
+              <Trash2 className="w-4 h-4" /> Apagar dados
+            </button>
+          )}
+          <button aria-label="Atualizar da planilha" onClick={load} disabled={loading} className="p-1">
+            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
+      {archived && (
+        <p role="status" className="mx-4 mt-2 text-sm rounded-[12px] bg-green-50 border border-green-600 px-3 py-2">
+          Dados de <b>{archived.bebe || "sem nome"}</b> guardados na pasta <b>Vivian – Arquivo</b> do Google Drive.{" "}
+          <a href={archived.url} target="_blank" rel="noreferrer" className="underline font-bold">Abrir arquivo</a>. A pulseira {nfc} está livre para outro bebê.
+        </p>
+      )}
+      {erasing && bracelet && (
+        <EraseDialog
+          nfc={nfc}
+          name={name}
+          onClose={() => setErasing(false)}
+          onDone={(b, url, bebe) => {
+            updated(b)
+            setArchived({ bebe, url })
+            setErasing(false)
+            choose("dados")
+            void refreshGps()
+          }}
+        />
+      )}
       {loadError && <p className="mx-5 mt-2 text-xs text-red-600">{loadError}</p>}
 
       <div role="tablist" aria-label="Abas do paciente" className="flex gap-2 overflow-x-auto lg:flex-wrap px-4 py-3 no-scrollbar">
@@ -130,6 +163,8 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
           <DadosTab key={nfc} bracelet={bracelet} onSaved={updated} />
         ) : current.kind === "registro" ? (
           <RegistroTab key={`${nfc}-${current.id}`} nfc={nfc} tab={current} history={bracelet.historico} onSaved={updated} />
+        ) : current.kind === "coracao" ? (
+          <CoracaoTab key={nfc} nfc={nfc} history={bracelet.historico} onSaved={updated} />
         ) : current.kind === "vacinas" ? (
           <VacinasTab key={nfc} nfc={nfc} history={bracelet.historico} onSaved={updated} />
         ) : current.kind === "checklist" ? (
@@ -140,6 +175,48 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
             <History entries={bracelet.historico} aba="GPS" title="Histórico de alarmes" />
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ───────────── Apagar dados (só PC) ─────────────
+function EraseDialog({ nfc, name, onClose, onDone }: { nfc: string; name: string; onClose: () => void; onDone: (b: Bracelet, url: string, bebe: string) => void }) {
+  const [typed, setTyped] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const ok = typed.replace(/^0+/, "").trim() === nfc.replace(/^0+/, "")
+  const go = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await api.archive(nfc, typed.trim())
+      onDone(r.pulseira, r.arquivo, r.bebe)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível apagar.")
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Apagar dados da pulseira" className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-[22px] border-4 border-red-600 p-5 w-full max-w-[460px]" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-lg text-red-700 flex items-center gap-2"><Trash2 className="w-5 h-5" /> Apagar dados da pulseira {nfc}</h3>
+        <p className="text-sm mt-2">
+          Todos os dados de <b>{name || "este bebê"}</b> (dados, sinais, vacinas, histórico) serão <b>guardados</b> numa planilha na pasta <b>Vivian – Arquivo</b> do Google Drive
+          e depois <b>apagados</b> desta pulseira. Ela fica sem nome, pronta para outro bebê.
+        </p>
+        <label className="block mt-3">
+          <span className="block text-[13px] mb-1 font-bold">Para confirmar, digite o número da pulseira ({nfc})</span>
+          <input autoFocus className={inputCls} inputMode="numeric" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        </label>
+        {error && <p role="alert" className="text-xs text-red-600 mt-2">{error}</p>}
+        <div className="flex gap-2 mt-4">
+          <button className="flex-1 rounded-full border-2 border-primary py-2 font-bold" onClick={onClose} disabled={busy}>Voltar</button>
+          <button className="flex-1 rounded-full bg-red-600 text-white py-2 font-bold disabled:opacity-40" disabled={!ok || busy} onClick={go}>
+            {busy ? "Arquivando…" : "Apagar dados"}
+          </button>
+        </div>
       </div>
     </div>
   )

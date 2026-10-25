@@ -89,6 +89,8 @@ export const api = {
   saveFence: (cerca: Partial<Fence> & { nome: string; apagar?: boolean }) => post({ action: "fence", cerca }).then((d) => d.cercas as Fence[]),
   // vacinas: programar ({nfc, vacina, data, horario, dias, alarme}), marcar dose aplicada ({id, aplicar}) ou cancelar ({id, cancelar})
   agenda: (item: Record<string, unknown>) => post({ action: "agenda", item }) as Promise<{ agenda: AgendaItem[]; pulseira: Bracelet | null }>,
+  // PC: arquiva tudo da pulseira no Drive e deixa ela vazia para outro bebê
+  archive: (nfc: string, confirmar: string) => post({ action: "archive", nfc, confirmar }) as Promise<{ pulseira: Bracelet; arquivo: string; bebe: string }>,
   sendPosition: (p: { nfc: string; lat: number; lng: number; acc?: number; fonte: string }) =>
     post({ action: "position", posicao: p }) as Promise<{ avaliacao: { situacao: string; setor: string; distancia: number; cerca?: string } }>,
 }

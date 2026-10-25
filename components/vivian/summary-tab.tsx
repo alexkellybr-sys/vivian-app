@@ -69,8 +69,8 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
           const late = next && next.date.getTime() <= Date.now()
           return (
             <p key={a.id} className={`text-sm mb-1 ${late ? "text-red-700 font-bold" : ""}`}>
-              {a.vacina} — {next ? `${late ? "na hora/atrasada" : "próxima"}: ${next.dia.slice(0, 5)} ${a.horario}` : "concluída ✔"}
-              {a.dias > 1 && <span className="text-[11px] text-muted-foreground font-normal"> ({a.aplicadas.length}/{a.dias} doses)</span>}
+              {a.vacina} — {next ? `${late ? "na hora/atrasada" : "próxima"}: ${next.dia.slice(0, 5)} ${next.hora}` : "concluída ✔"}
+              {next && next.total > 1 && <span className="text-[11px] text-muted-foreground font-normal"> (dose {next.n} de {next.total} · a cada {a.intervalo} h)</span>}
             </p>
           )
         })}
@@ -224,7 +224,7 @@ function Coracao({ r, onAdd }: { r?: Registro & { date?: Date }; onAdd: () => vo
             {v("Horas de vida") && <>{v("Horas de vida")} h de vida</>}
           </p>
           {v("Observação") && <p className="text-xs mt-1">📝 {v("Observação")}</p>}
-          <p className="text-[11px] text-muted-foreground">{r.date ? fmtDate(r.date) : r.time} · {r.usuario || "—"}</p>
+          <p className="text-[11px] text-muted-foreground">{r.date ? fmtDate(r.date) : r.time} · {r.usuario || "—"}{v("Modo") ? ` · resultado ${v("Modo").toLowerCase()}` : ""}</p>
         </>
       )}
     </Block>
