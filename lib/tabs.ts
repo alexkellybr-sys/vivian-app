@@ -15,6 +15,7 @@ export type TabDef =
   | { id: string; label: string; kind: "registro"; fields: FieldDef[] }
   | { id: string; label: string; kind: "checklist"; items: string[] }
   | { id: string; label: string; kind: "gps" }
+  | { id: string; label: string; kind: "vacinas" }
 
 export const TABS: TabDef[] = [
   { id: "resumo", label: "Resumo", kind: "resumo" },
@@ -33,6 +34,18 @@ export const TABS: TabDef[] = [
     ],
   },
   {
+    id: "coracao",
+    label: "Teste do coraçãozinho",
+    kind: "registro",
+    fields: [
+      { name: "Horas de vida", inputMode: "numeric", placeholder: "ex.: 30" },
+      { name: "SatO2 mão direita (%)", inputMode: "numeric" },
+      { name: "SatO2 pé (%)", inputMode: "numeric" },
+      { name: "Resultado", input: "select", options: ["Normal", "Repetir em 1 hora", "Alterado – encaminhar"] },
+      { name: "Observação", input: "textarea" },
+    ],
+  },
+  {
     id: "intercorrencias",
     label: "Intercorrências",
     kind: "registro",
@@ -42,7 +55,7 @@ export const TABS: TabDef[] = [
     ],
   },
   { id: "anamnese", label: "Anamnese", kind: "registro", fields: [{ name: "Anamnese", input: "textarea" }] },
-  { id: "alergias", label: "Alergias", kind: "registro", fields: [{ name: "Alergia" }, { name: "Reação" }] },
+  { id: "vacinas", label: "Vacinas", kind: "vacinas" },
   { id: "diagnostico", label: "Diagnóstico", kind: "registro", fields: [{ name: "Diagnóstico", input: "textarea" }, { name: "CID" }] },
   {
     id: "medicacoes",
@@ -59,7 +72,7 @@ export const TABS: TabDef[] = [
     id: "conferencia",
     label: "Conferência",
     kind: "checklist",
-    items: ["Peso confirmado", "Alergias verificadas", "Procedimento correto", "Local correto", "Pulseira conferida com a mãe"],
+    items: ["Peso confirmado", "Vacinas conferidas", "Procedimento correto", "Local correto", "Pulseira conferida com a mãe"],
   },
   { id: "gps", label: "GPS", kind: "gps" },
 ]
@@ -68,5 +81,8 @@ export const TABS: TabDef[] = [
 export const DADOS_OPTIONS: Record<string, string[]> = {
   Sexo: ["Feminino", "Masculino", "Indeterminado"],
 }
+
+// nomes prontos na aba Vacinas (dá para digitar outra)
+export const VACINAS = ["BCG", "Hepatite B", "Vitamina K"]
 
 export const NAME_FIELD = "Nome do bebê"

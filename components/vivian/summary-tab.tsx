@@ -1,16 +1,18 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, Pill, Stethoscope, Thermometer } from "lucide-react"
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, Heart, Pill, Stethoscope, Syringe, Thermometer } from "lucide-react"
 import { buildSummary, fmtDate, type Registro } from "@/lib/summary"
 import type { Bracelet } from "@/lib/types"
 import { useGps } from "./gps-monitor"
+import { doses } from "@/lib/vacinas"
 
 const ABA_COLOR: Record<string, string> = {
   "Sinais vitais": "border-l-sky-500",
   Intercorrências: "border-l-red-500",
   Medicações: "border-l-violet-500",
-  Alergias: "border-l-orange-500",
+  Vacinas: "border-l-sky-600",
+  "Teste do coraçãozinho": "border-l-red-500",
   Diagnóstico: "border-l-amber-600",
   Anamnese: "border-l-slate-500",
   Conferência: "border-l-green-600",
@@ -26,6 +28,8 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
   const s = useMemo(() => buildSummary(bracelet), [bracelet])
   const { state } = useGps()
   const pos = state?.posicoes.find((p) => p.nfc === bracelet.nfc)
+  const vacItems = (state?.agenda || []).filter((a) => a.nfc === bracelet.nfc && a.situacao !== "Concluída")
+  const vacDue = vacItems.filter((a) => doses(a).some((d) => !d.aplicada && d.date.getTime() <= Date.now()))
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const d = bracelet.dados
 
@@ -55,13 +59,29 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
         )}
       </div>
 
-      {/* alergias sempre bem visíveis */}
-      <Block title="Alergias" icon={<AlertTriangle className="w-4 h-4" />} tone={s.allergies.length ? "warn" : undefined} onAdd={() => onGo("alergias")}>
-        {s.allergies.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhuma alergia registrada.</p>
-        ) : (
-          s.allergies.map((r, i) => <Line key={i} r={r} />)
-        )}
+      {/* teste do coraçãozinho (coração vermelho) */}
+      <Coracao r={s.coracao} onAdd={() => onGo("coracao")} />
+
+      <Block title="Vacinas" icon={<Syringe className="w-4 h-4" />} tone={vacDue.length ? "warn" : undefined} onAdd={() => onGo("vacinas")}>
+        {vacItems.length === 0 && s.vacinas.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma vacina registrada.</p>}
+        {vacItems.map((a) => {
+          const next = doses(a).find((d) => !d.aplicada)
+          const late = next && next.date.getTime() <= Date.now()
+          return (
+            <p key={a.id} className={`text-sm mb-1 ${late ? "text-red-700 font-bold" : ""}`}>
+              {a.vacina} — {next ? `${late ? "na hora/atrasada" : "próxima"}: ${next.dia.slice(0, 5)} ${a.horario}` : "concluída ✔"}
+              {a.dias > 1 && <span className="text-[11px] text-muted-foreground font-normal"> ({a.aplicadas.length}/{a.dias} doses)</span>}
+            </p>
+          )
+        })}
+        {s.vacinas
+          .flatMap((r) => r.items.filter((i) => i.campo === "Aplicada").map((i) => ({ ...r, items: [i] })))
+          .slice(0, 4)
+          .map((r, i) => (
+            <p key={i} className="text-sm mb-1 text-green-800">
+              ✔ {r.items[0].valor} <span className="text-[11px] text-muted-foreground">({r.usuario || "—"})</span>
+            </p>
+          ))}
       </Block>
 
       <Block title="Sinais vitais (últimos)" icon={<Thermometer className="w-4 h-4" />} onAdd={() => onGo("sinais")}>
@@ -178,6 +198,36 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
       </div>
       <p className="text-[10px] text-center text-muted-foreground pt-2">Vivian · versão {VERSION}</p>
     </div>
+  )
+}
+
+function Coracao({ r, onAdd }: { r?: Registro & { date?: Date }; onAdd: () => void }) {
+  const v = (campo: string) => r?.items.find((i) => i.campo === campo)?.valor || ""
+  const mao = num(v("SatO2 mão direita (%)"))
+  const pe = num(v("SatO2 pé (%)"))
+  const res = v("Resultado")
+  const tone = /alterado/i.test(res) ? "danger" : /repetir/i.test(res) ? "warn" : undefined
+  return (
+    <Block title="Teste do coraçãozinho" icon={<Heart className="w-4 h-4 fill-red-600 text-red-600" />} tone={tone} onAdd={onAdd}>
+      {!r ? (
+        <p className="text-sm text-muted-foreground">Ainda não foi feito.</p>
+      ) : (
+        <>
+          <p className={`text-sm font-bold ${tone === "danger" ? "text-red-700" : tone === "warn" ? "text-orange-700" : "text-green-700"}`}>
+            <Heart className="inline w-4 h-4 mr-1 -mt-0.5 fill-red-600 text-red-600" />
+            {res || "Registrado"}
+          </p>
+          <p className="text-sm">
+            {v("SatO2 mão direita (%)") && <>Mão direita {v("SatO2 mão direita (%)")}% · </>}
+            {v("SatO2 pé (%)") && <>Pé {v("SatO2 pé (%)")}% · </>}
+            {Number.isFinite(mao) && Number.isFinite(pe) && v("SatO2 mão direita (%)") && v("SatO2 pé (%)") && <>diferença {Math.abs(mao - pe)}% · </>}
+            {v("Horas de vida") && <>{v("Horas de vida")} h de vida</>}
+          </p>
+          {v("Observação") && <p className="text-xs mt-1">📝 {v("Observação")}</p>}
+          <p className="text-[11px] text-muted-foreground">{r.date ? fmtDate(r.date) : r.time} · {r.usuario || "—"}</p>
+        </>
+      )}
+    </Block>
   )
 }
 

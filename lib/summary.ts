@@ -68,7 +68,8 @@ export function buildSummary(b: Bracelet, now = new Date()) {
     return { ...v, last: values[0], previous: values[1], first: values.length > 1 ? values[values.length - 1] : undefined }
   }).filter((v) => v.last)
   const lastObs = recs.find((r) => r.aba === "Sinais vitais" && r.items.some((i) => i.campo === "Observação"))
-  const allergies = recs.filter((r) => r.aba === "Alergias")
+  const coracao = recs.find((r) => r.aba === "Teste do coraçãozinho")
+  const vacinas = recs.filter((r) => r.aba === "Vacinas")
   const diagnosis = recs.find((r) => r.aba === "Diagnóstico")
   const dayMs = 86400000
   const meds = recs.filter((r) => r.aba === "Medicações" && now.getTime() - r.date.getTime() <= dayMs)
@@ -79,11 +80,10 @@ export function buildSummary(b: Bracelet, now = new Date()) {
   const allMeds = recs.filter((r) => r.aba === "Medicações")
   const allIncidents = recs.filter((r) => r.aba === "Intercorrências")
   // abas que não têm bloco próprio no Resumo (ex.: campos/abas novas): mostra o último de cada
-  const KNOWN = ["Sinais vitais", "Alergias", "Diagnóstico", "Medicações", "Intercorrências", "Conferência", "Anamnese", "Dados", "GPS"]
+  const KNOWN = ["Sinais vitais", "Alergias", "Vacinas", "Teste do coraçãozinho", "Diagnóstico", "Medicações", "Intercorrências", "Conferência", "Anamnese", "Dados", "GPS"]
   const others: typeof recs = []
   for (const r of recs) if (!KNOWN.includes(r.aba) && !others.some((o) => o.aba === r.aba)) others.push(r)
   const anamnese = recs.filter((r) => r.aba === "Anamnese")
-  const alergiaCount = allergies.length
 
   // dia a dia (mais novo primeiro)
   const days: Day[] = []
@@ -110,13 +110,13 @@ export function buildSummary(b: Bracelet, now = new Date()) {
     dayOfStay: start ? dayNumber(start, now) : null,
     vitals,
     lastObs,
-    allergies,
+    coracao,
+    vacinas,
     diagnosis,
     meds,
     incidents,
     conference,
     anamnese,
-    alergiaCount,
     lastMed,
     lastIncident,
     allMeds,

@@ -2,7 +2,7 @@
 
 import { SCRIPT_URL } from "./config"
 import { keyFromText } from "./nfc"
-import type { Bracelet, BraceletSummary, Fence, GpsState } from "./types"
+import type { AgendaItem, Bracelet, BraceletSummary, Fence, GpsState } from "./types"
 
 // O app fala direto com o Apps Script da planilha.
 // GET com parâmetros e POST com texto JSON (assim o navegador não faz "preflight", que o Google não aceita).
@@ -87,6 +87,8 @@ export const api = {
   // poll=1: a consulta automática do GPS não conta como "uso" (senão a sessão nunca expiraria)
   gps: () => get({ action: "gps", poll: "1" }) as Promise<GpsState & { rastreador: boolean }>,
   saveFence: (cerca: Partial<Fence> & { nome: string; apagar?: boolean }) => post({ action: "fence", cerca }).then((d) => d.cercas as Fence[]),
+  // vacinas: programar ({nfc, vacina, data, horario, dias, alarme}), marcar dose aplicada ({id, aplicar}) ou cancelar ({id, cancelar})
+  agenda: (item: Record<string, unknown>) => post({ action: "agenda", item }) as Promise<{ agenda: AgendaItem[]; pulseira: Bracelet | null }>,
   sendPosition: (p: { nfc: string; lat: number; lng: number; acc?: number; fonte: string }) =>
     post({ action: "position", posicao: p }) as Promise<{ avaliacao: { situacao: string; setor: string; distancia: number; cerca?: string } }>,
 }

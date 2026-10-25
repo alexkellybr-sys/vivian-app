@@ -1,9 +1,10 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react"
-import { BellOff, MapPin, Siren } from "lucide-react"
+import { BellOff, Check, MapPin, Siren, Syringe } from "lucide-react"
 import { api } from "@/lib/client"
-import type { GpsState, Position } from "@/lib/types"
+import type { AgendaItem, GpsState, Position } from "@/lib/types"
+import { doseKey, dueDoses, fmtDose, type Dose } from "@/lib/vacinas"
 
 type Trend = "afastando" | "aproximando" | "parado" | ""
 type Ctx = {
@@ -17,6 +18,9 @@ type Ctx = {
   soundReady: boolean
   enableSound: () => void
   onOpenBracelet?: (nfc: string) => void
+  vaccineDue: Dose[]
+  applyDose: (d: Dose) => Promise<void>
+  updateAgenda: (a: AgendaItem[]) => void
 }
 
 const GpsContext = createContext<Ctx | null>(null)
@@ -83,7 +87,7 @@ export function GpsProvider({ children, enabled, onOpenBracelet }: { children: R
   const refresh = useCallback(async () => {
     try {
       const data = await api.gps()
-      setState({ cercas: data.cercas, posicoes: data.posicoes, pulseiras: data.pulseiras })
+      setState({ cercas: data.cercas, posicoes: data.posicoes, pulseiras: data.pulseiras, agenda: data.agenda || [] })
       setRastreador(data.rastreador)
       setError(null)
       const t: Record<string, Trend> = {}
@@ -131,12 +135,43 @@ export function GpsProvider({ children, enabled, onOpenBracelet }: { children: R
   const alarms = (state?.posicoes || []).filter((p) => p.situacao === "FORA")
   const ringing = alarms.filter((p) => !silenced[p.nfc])
 
+  // vacinas: confere a cada 15 s se chegou a hora de alguma dose
+  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (ringing.length) {
+    const id = setInterval(() => setNow(Date.now()), 15000)
+    return () => clearInterval(id)
+  }, [])
+  const [snoozed, setSnoozed] = useState<Record<string, number>>({})
+  const [applying, setApplying] = useState<string | null>(null)
+  const [doseError, setDoseError] = useState<string | null>(null)
+  const vaccineDue = dueDoses(state?.agenda || [], Math.max(now, Date.now()))
+  const vaccineRinging = vaccineDue.filter((d) => !(snoozed[doseKey(d)] > now))
+  const updateAgenda = useCallback((a: AgendaItem[]) => setState((c) => (c ? { ...c, agenda: a } : c)), [])
+  const snooze = (d: Dose) => setSnoozed((c) => ({ ...c, [doseKey(d)]: Date.now() + 10 * 60000 }))
+  const applyDose = useCallback(
+    async (d: Dose) => {
+      setApplying(doseKey(d))
+      setDoseError(null)
+      try {
+        const r = await api.agenda({ id: d.item.id, aplicar: d.dia })
+        setState((c) => (c ? { ...c, agenda: r.agenda } : c))
+        if (r.pulseira) window.dispatchEvent(new CustomEvent("vivian-bracelet", { detail: r.pulseira }))
+      } catch (e) {
+        setDoseError(e instanceof Error ? e.message : "Não foi possível salvar.")
+        throw e
+      } finally {
+        setApplying(null)
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (ringing.length || vaccineRinging.length) {
       siren.current?.start()
       if ("vibrate" in navigator) navigator.vibrate?.([600, 300, 600, 300, 600])
     } else siren.current?.stop()
-  }, [ringing.length])
+  }, [ringing.length, vaccineRinging.length])
 
   const silence = (nfc: string) => setSilenced((c) => ({ ...c, [nfc]: true }))
   const enableSound = () => {
@@ -146,8 +181,37 @@ export function GpsProvider({ children, enabled, onOpenBracelet }: { children: R
   const nameOf = (nfc: string) => state?.pulseiras.find((p) => p.nfc === nfc)?.bebe || ""
 
   return (
-    <GpsContext.Provider value={{ state, error, rastreador, refresh, alarms, trend, silence, soundReady, enableSound, onOpenBracelet }}>
+    <GpsContext.Provider value={{ state, error, rastreador, refresh, alarms, trend, silence, soundReady, enableSound, onOpenBracelet, vaccineDue, applyDose, updateAgenda }}>
       {children}
+      {vaccineRinging.length > 0 && (
+        <div role="alertdialog" aria-label="Hora da vacina" className="fixed inset-x-0 bottom-0 lg:inset-x-auto lg:left-0 z-[99] p-3 flex justify-center pointer-events-none">
+          <div className="w-full max-w-[640px] lg:w-[420px] space-y-2 pointer-events-auto max-h-[60dvh] overflow-y-auto">
+            {vaccineRinging.map((d) => (
+              <div key={doseKey(d)} className="rounded-[18px] bg-sky-700 text-white p-4 shadow-[0_0_0_6px_rgba(3,105,161,0.35),0_20px_40px_rgba(0,0,0,0.35)]">
+                <div className="flex items-center gap-2 font-bold text-lg">
+                  <Syringe className="w-6 h-6 shrink-0 animate-pulse" /> HORA DA VACINA
+                </div>
+                <p className="mt-1 text-sm leading-snug">
+                  <b>{d.item.vacina}</b> · {d.item.bebe ? <b>{d.item.bebe} · </b> : null}pulseira {d.item.nfc} · {fmtDose(d)}
+                  {d.item.dias > 1 && <> · dose {d.item.aplicadas.length + 1} de {d.item.dias}</>}
+                </p>
+                {doseError && <p className="text-xs mt-1 bg-white/20 rounded px-2 py-1">{doseError}</p>}
+                <div className="mt-3 flex gap-2">
+                  <button disabled={applying === doseKey(d)} className="flex-1 rounded-full bg-white text-sky-800 font-bold py-2 text-sm flex items-center justify-center gap-1" onClick={() => applyDose(d).catch(() => {})}>
+                    <Check className="w-4 h-4" /> {applying === doseKey(d) ? "Salvando…" : "Aplicada"}
+                  </button>
+                  <button className="flex-1 rounded-full border-2 border-white font-bold py-2 text-sm" onClick={() => onOpenBracelet?.(d.item.nfc)}>
+                    Abrir bebê
+                  </button>
+                  <button className="flex-1 rounded-full border-2 border-white font-bold py-2 text-sm flex items-center justify-center gap-1" onClick={() => snooze(d)}>
+                    <BellOff className="w-4 h-4" /> 10 min
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {ringing.length > 0 && (
         <div role="alertdialog" aria-label="Alarme de GPS" className="fixed inset-x-0 top-0 lg:inset-x-auto lg:top-auto lg:bottom-0 lg:right-0 z-[100] p-3 flex justify-center pointer-events-none">
           <div className="w-full max-w-[640px] lg:w-[440px] space-y-2 pointer-events-auto max-h-[70dvh] overflow-y-auto">

@@ -450,6 +450,72 @@ function positions_() {
   })
 }
 
+// ───────────────────────── agenda de vacinas (alarme no app) ─────────────────────────
+const AGENDA = "Agenda"
+const AGENDA_HEADERS = ["ID", "Pulseira", "Bebê", "Vacina", "Data", "Horário", "Dias", "Alarme", "Doses aplicadas", "Situação", "Programado por", "Atualizado"]
+function agendaSheet_() {
+  let s = ss_().getSheetByName(AGENDA)
+  if (!s) {
+    s = ss_().insertSheet(AGENDA)
+    s.getRange(1, 1, 1000, AGENDA_HEADERS.length).setNumberFormat("@") // datas ficam como texto
+    header_(s, "VIVIAN – Agenda de vacinas (o app avisa na hora marcada)", AGENDA_HEADERS)
+  }
+  return s
+}
+function agenda_() {
+  return rows_(agendaSheet_(), FIRST_ROW, 1, AGENDA_HEADERS.length).filter(function (r) { return r[0] && r[9] !== "Cancelada" }).slice(-300).map(function (r) {
+    return { id: r[0], nfc: r[1], bebe: r[2], vacina: r[3], data: r[4], horario: r[5], dias: Number(r[6]) || 1, alarme: r[7] !== "Não",
+      aplicadas: r[8] ? r[8].split(/\s*,\s*/).filter(String) : [], situacao: r[9], por: r[10] }
+  })
+}
+// a = { nfc, vacina, data "dd/MM/yyyy", horario "HH:mm", dias, alarme }  → programa
+// a = { id, aplicar: "dd/MM/yyyy" } → marca a dose do dia como aplicada;  a = { id, cancelar: true } → cancela
+function saveAgenda_(a, user) {
+  const s = agendaSheet_()
+  const stamp = now_()
+  if (a.id) {
+    const rows = rows_(s, FIRST_ROW, 1, AGENDA_HEADERS.length)
+    const i = rows.map(function (r) { return r[0] }).indexOf(String(a.id))
+    if (i < 0) throw new Error("Vacina não encontrada na agenda.")
+    const r = rows[i]
+    const sheet = braceletSheet_(r[1])
+    if (a.cancelar) {
+      s.getRange(FIRST_ROW + i, 10, 1, 3).setValues([["Cancelada", r[10], stamp]])
+      if (sheet) appendHistory_(sheet, [[stamp, "Vacinas", "Cancelada", r[3] + " (programada " + r[4] + " " + r[5] + ")", user]])
+      return sheet
+    }
+    const dose = String(a.aplicar || "")
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dose)) throw new Error("Dose inválida.")
+    const done = r[8] ? r[8].split(/\s*,\s*/).filter(String) : []
+    if (done.indexOf(dose) < 0) done.push(dose)
+    const status = done.length >= (Number(r[6]) || 1) ? "Concluída" : "Programada"
+    s.getRange(FIRST_ROW + i, 9, 1, 4).setValues([[done.join(", "), status, r[10], stamp]])
+    if (sheet) appendHistory_(sheet, [[stamp, "Vacinas", "Aplicada", r[3] + " – dose de " + dose + " " + r[5], user]])
+    return sheet
+  }
+  const sheet = braceletSheet_(a.nfc)
+  if (!sheet) throw new Error("Pulseira " + a.nfc + " não cadastrada.")
+  const vacina = String(a.vacina || "").trim().slice(0, 80)
+  const data = String(a.data || "")
+  const horario = String(a.horario || "")
+  const dias = Math.max(1, Math.min(60, Number(a.dias) || 1))
+  if (!vacina) throw new Error("Informe o nome da vacina.")
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(data) || !/^\d{2}:\d{2}$/.test(horario)) throw new Error("Informe a data e o horário.")
+  const bebe = (list_().filter(function (p) { return key_(p.nfc) === key_(sheet.getName()) })[0] || {}).bebe || ""
+  const id = Utilities.getUuid().replace(/-/g, "").slice(0, 10)
+  const aplicadas = a.aplicadaAgora ? data : ""
+  const status = a.aplicadaAgora && dias === 1 ? "Concluída" : "Programada"
+  s.getRange(Math.max(s.getLastRow() + 1, FIRST_ROW), 1, 1, AGENDA_HEADERS.length)
+    .setValues([[id, sheet.getName(), bebe, vacina, data, horario, String(dias), a.alarme === false ? "Não" : "Sim", aplicadas, status, user, stamp].map(safe_)])
+  const hist = a.aplicadaAgora
+    ? [[stamp, "Vacinas", "Aplicada", vacina + " – " + data + " " + horario, user]]
+    : [[stamp, "Vacinas", "Vacina", vacina, user], [stamp, "Vacinas", "Programada para", data + " " + horario, user],
+       [stamp, "Vacinas", "Dias", String(dias), user], [stamp, "Vacinas", "Alarme", a.alarme === false ? "Não" : "Sim", user]]
+  appendHistory_(sheet, hist)
+  updateIndex_(sheet.getName(), sheet)
+  return sheet
+}
+
 // ───────────────────────── entradas ─────────────────────────
 // GET  ?s=<sessão>&action=list|gps|fences|positions   ou   ?s=...&nfc=11982
 function doGet(e) {
@@ -462,7 +528,7 @@ function doGet(e) {
     if (p.action === "list") return json_({ ok: true, pulseiras: list_() })
     if (p.action === "fences") return json_({ ok: true, cercas: fences_() })
     if (p.action === "positions") return json_({ ok: true, posicoes: positions_() })
-    if (p.action === "gps") return json_({ ok: true, cercas: fences_(), posicoes: positions_(), pulseiras: list_(), rastreador: !!(TRACCAR_URL && TRACCAR_TOKEN) })
+    if (p.action === "gps") return json_({ ok: true, cercas: fences_(), posicoes: positions_(), pulseiras: list_(), agenda: agenda_(), rastreador: !!(TRACCAR_URL && TRACCAR_TOKEN) })
     const sheet = braceletSheet_(p.nfc)
     if (!sheet) return json_({ ok: false, notFound: true, error: "Pulseira " + p.nfc + " não cadastrada." })
     return json_({ ok: true, pulseira: readBracelet_(sheet) })
@@ -471,7 +537,7 @@ function doGet(e) {
   }
 }
 
-// POST (texto JSON) { action: "login"|"logout"|"save"|"create"|"fence"|"position", s: <sessão>, ... }
+// POST (texto JSON) { action: "login"|"logout"|"save"|"create"|"fence"|"position"|"agenda", s: <sessão>, ... }
 function doPost(e) {
   let b
   try { b = JSON.parse((e && e.postData && e.postData.contents) || "{}") } catch (err) { return json_({ ok: false, error: "Dados inválidos." }) }
@@ -484,6 +550,11 @@ function doPost(e) {
     const user = session_(b.s, true)
     if (!user) return json_({ ok: false, auth: true, error: AUTH_REASON })
     if (b.action === "fence") { saveFence_(b.cerca || {}); return json_({ ok: true, cercas: fences_() }) }
+    if (b.action === "agenda") {
+      const sh = saveAgenda_(b.item || {}, user)
+      SpreadsheetApp.flush()
+      return json_({ ok: true, agenda: agenda_(), pulseira: sh ? readBracelet_(sh) : null })
+    }
     if (b.action === "position") { const ev = savePosition_(b.posicao || {}, user); return json_({ ok: true, avaliacao: ev }) }
     if (b.action === "create") {
       if (!key_(b.nfc)) return json_({ ok: false, error: "Número NFC inválido." })

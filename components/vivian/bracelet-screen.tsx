@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { RefreshCw } from "lucide-react"
+import { Heart, RefreshCw } from "lucide-react"
 import { api, cacheGet, cacheSet } from "@/lib/client"
 import { DADOS_OPTIONS, NAME_FIELD, TABS, type FieldDef, type TabDef } from "@/lib/tabs"
 import type { Bracelet, HistoryEntry } from "@/lib/types"
 import { GoldButton } from "./gold-button"
 import { GpsTab } from "./gps-tab"
 import { SummaryTab } from "./summary-tab"
+import { VacinasTab } from "./vacinas-tab"
 import { useGps } from "./gps-monitor"
 
 type Props = {
@@ -53,6 +54,17 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
     cacheSet(`b-${nfc}`, b)
     onSaved?.(b)
   }
+
+  // dose marcada como aplicada pelo alarme → atualiza este bebê se for o aberto
+  useEffect(() => {
+    const on = (e: Event) => {
+      const b = (e as CustomEvent<Bracelet>).detail
+      if (b && b.nfc === nfc) updated(b)
+    }
+    window.addEventListener("vivian-bracelet", on)
+    return () => window.removeEventListener("vivian-bracelet", on)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nfc])
 
   const current = TABS.find((t) => t.id === tab) || TABS[0]
   const name = bracelet?.dados[NAME_FIELD] || ""
@@ -103,6 +115,7 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
               t.id === current.id ? "bg-gradient-to-br from-accent via-[#F9E498] to-primary border-primary" : "bg-white/70 border-primary/40"
             } ${t.id === "gps" && inAlarm ? "!bg-red-600 !text-white !border-red-600" : ""}`}
           >
+            {t.id === "coracao" && <Heart className="inline w-3.5 h-3.5 mr-1 -mt-0.5 fill-red-600 text-red-600" />}
             {t.label}
           </button>
         ))}
@@ -117,6 +130,8 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
           <DadosTab key={nfc} bracelet={bracelet} onSaved={updated} />
         ) : current.kind === "registro" ? (
           <RegistroTab key={`${nfc}-${current.id}`} nfc={nfc} tab={current} history={bracelet.historico} onSaved={updated} />
+        ) : current.kind === "vacinas" ? (
+          <VacinasTab key={nfc} nfc={nfc} history={bracelet.historico} onSaved={updated} />
         ) : current.kind === "checklist" ? (
           <ChecklistTab key={`${nfc}-${current.id}`} nfc={nfc} tab={current} history={bracelet.historico} onSaved={updated} />
         ) : (
@@ -230,9 +245,9 @@ function ChecklistTab({ nfc, tab, history, onSaved }: { nfc: string; tab: Extrac
 }
 
 // ───────────── peças comuns ─────────────
-type Status = { ok: boolean; text: string; busy?: boolean } | null
+export type Status = { ok: boolean; text: string; busy?: boolean } | null
 
-async function run(set: (s: Status) => void, fn: () => Promise<void>) {
+export async function run(set: (s: Status) => void, fn: () => Promise<void>) {
   set({ ok: true, text: "Salvando na planilha…", busy: true })
   try {
     await fn()
@@ -242,7 +257,7 @@ async function run(set: (s: Status) => void, fn: () => Promise<void>) {
   }
 }
 
-function Card({ children }: { children: React.ReactNode }) {
+export function Card({ children }: { children: React.ReactNode }) {
   return <div className="bg-card p-4 rounded-[22px] border-2 border-primary">{children}</div>
 }
 
@@ -265,7 +280,7 @@ function Field({ def, value, onChange }: { def: FieldDef; value: string; onChang
   )
 }
 
-function SaveButton({ status, onClick, disabled, label = "SALVAR" }: { status: Status; onClick: () => void; disabled?: boolean; label?: string }) {
+export function SaveButton({ status, onClick, disabled, label = "SALVAR" }: { status: Status; onClick: () => void; disabled?: boolean; label?: string }) {
   return (
     <>
       <GoldButton onClick={onClick} disabled={disabled || status?.busy} className={disabled ? "opacity-50" : ""}>
@@ -276,7 +291,7 @@ function SaveButton({ status, onClick, disabled, label = "SALVAR" }: { status: S
   )
 }
 
-function History({ entries, aba, title = "Histórico" }: { entries: HistoryEntry[]; aba: string; title?: string }) {
+export function History({ entries, aba, title = "Histórico" }: { entries: HistoryEntry[]; aba: string; title?: string }) {
   const groups: { data: string; usuario: string; items: HistoryEntry[] }[] = []
   for (const e of entries.filter((x) => x.aba === aba)) {
     const last = groups[groups.length - 1]

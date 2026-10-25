@@ -41,4 +41,18 @@ export type Position = {
   distancia: number
 }
 
-export type GpsState = { cercas: Fence[]; posicoes: Position[]; pulseiras: BraceletSummary[] }
+export type AgendaItem = {
+  id: string
+  nfc: string
+  bebe: string
+  vacina: string
+  data: string // dd/MM/yyyy
+  horario: string // HH:mm
+  dias: number
+  alarme: boolean
+  aplicadas: string[] // dd/MM/yyyy de cada dose aplicada
+  situacao: string // Programada | Concluída
+  por: string
+}
+
+export type GpsState = { cercas: Fence[]; posicoes: Position[]; pulseiras: BraceletSummary[]; agenda: AgendaItem[] }
