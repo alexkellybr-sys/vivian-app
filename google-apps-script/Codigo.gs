@@ -155,6 +155,18 @@ function sincronizarRastreador() {
   return sent
 }
 
+// link "Abrir ▶" para a aba da pulseira (link comum: funciona em qualquer idioma da planilha)
+function setLink_(cell, sheet) {
+  cell.setRichTextValue(SpreadsheetApp.newRichTextValue().setText("Abrir ▶").setLinkUrl("#gid=" + sheet.getSheetId()).build())
+}
+function repararLinks_() {
+  const index = ss_().getSheetByName(INDEX)
+  rows_(index, FIRST_ROW, 1, 1).forEach(function (r, i) {
+    const b = r[0] && braceletSheet_(r[0])
+    if (b) setLink_(index.getRange(FIRST_ROW + i, 7), b)
+  })
+}
+
 function braceletSheet_(nfc) {
   const k = key_(nfc)
   const sheets = ss_().getSheets()
@@ -189,7 +201,7 @@ function createBracelet_(nfc, dados, user) {
     const index = ss_().getSheetByName(INDEX)
     const row = Math.max(index.getLastRow() + 1, FIRST_ROW)
     index.getRange(row, 1, 1, 6).setValues([[name, "", "", "", "", now_()]])
-    index.getRange(row, 7).setFormula('=HYPERLINK("#gid=' + sheet.getSheetId() + '","Abrir ▶")')
+    setLink_(index.getRange(row, 7), sheet)
   }
   if (dados && Object.keys(dados).length) saveDados_(sheet, name, dados, user || "")
   return sheet
@@ -439,4 +451,4 @@ function doPost(e) {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu("Vivian").addItem("Preparar abas", "prepararAbas").addToUi()
 }
-function prepararAbas() { ensureSetup_() }
+function prepararAbas() { ensureSetup_(); repararLinks_() }
