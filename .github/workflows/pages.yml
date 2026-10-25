@@ -25,6 +25,7 @@ jobs:
         run: |
           REPO="${{ github.event.repository.name }}"
           if [[ "$REPO" == *.github.io ]]; then export NEXT_PUBLIC_BASE_PATH=""; else export NEXT_PUBLIC_BASE_PATH="/$REPO"; fi
+          export NEXT_PUBLIC_VERSION="$(TZ=America/Fortaleza date +'%d/%m %H:%M')"
           npm run build
           touch out/.nojekyll
       - uses: actions/upload-pages-artifact@v3

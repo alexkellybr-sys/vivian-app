@@ -20,6 +20,8 @@ const ABA_COLOR: Record<string, string> = {
 
 const num = (v: string) => Number(String(v).replace(",", ".").replace(/[^\d.-]/g, ""))
 
+const VERSION = process.env.NEXT_PUBLIC_VERSION || "dev"
+
 export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabId: string) => void }) {
   const s = useMemo(() => buildSummary(bracelet), [bracelet])
   const { state } = useGps()
@@ -96,19 +98,45 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
         {s.diagnosis ? <Line r={s.diagnosis} /> : <p className="text-sm text-muted-foreground">Sem diagnóstico registrado.</p>}
       </Block>
 
-      <Block title="Medicações nas últimas 24 h" icon={<Pill className="w-4 h-4" />} onAdd={() => onGo("medicacoes")}>
-        {s.meds.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma nas últimas 24 h.</p> : s.meds.map((r, i) => <Line key={i} r={r} />)}
+      <Block title="Medicações" icon={<Pill className="w-4 h-4" />} onAdd={() => onGo("medicacoes")}>
+        {s.allMeds.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma medicação registrada.</p>
+        ) : (
+          <>
+            {s.meds.length === 0 && <p className="text-xs text-muted-foreground mb-1">Nenhuma nas últimas 24 h. Últimas registradas:</p>}
+            {(s.meds.length ? s.meds : s.allMeds.slice(0, 3)).map((r, i) => <Line key={i} r={r} />)}
+            {s.allMeds.length > Math.max(s.meds.length, 3) && <p className="text-[11px] text-muted-foreground">+ {s.allMeds.length - Math.max(s.meds.length, 3)} anteriores no registro dia a dia</p>}
+          </>
+        )}
       </Block>
 
-      <Block title="Intercorrências (últimos 3 dias)" icon={<AlertTriangle className="w-4 h-4" />} tone={s.incidents.some((r) => r.items.some((i) => i.valor === "Grave")) ? "danger" : undefined} onAdd={() => onGo("intercorrencias")}>
-        {s.incidents.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma intercorrência recente. ✔</p> : s.incidents.map((r, i) => <Line key={i} r={r} />)}
+      <Block title="Intercorrências" icon={<AlertTriangle className="w-4 h-4" />} tone={s.incidents.some((r) => r.items.some((i) => i.valor === "Grave")) ? "danger" : s.incidents.length ? "warn" : undefined} onAdd={() => onGo("intercorrencias")}>
+        {s.allIncidents.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma intercorrência registrada. ✔</p>
+        ) : (
+          <>
+            {s.incidents.length === 0 && <p className="text-xs text-muted-foreground mb-1">Nenhuma nos últimos 3 dias. Última:</p>}
+            {(s.incidents.length ? s.incidents : s.allIncidents.slice(0, 1)).map((r, i) => <Line key={i} r={r} />)}
+          </>
+        )}
       </Block>
 
-      {s.conference && (
-        <p className="text-xs px-1">
-          ✅ Última conferência: {s.conference.items.find((i) => i.campo === "Resultado")?.valor || "registrada"} ({s.conference.time}, {s.conference.usuario})
-        </p>
-      )}
+      <Block title="Conferência" icon={<Stethoscope className="w-4 h-4" />} onAdd={() => onGo("conferencia")}>
+        {s.conference ? (
+          <p className="text-sm">
+            {s.conference.items.find((i) => i.campo === "Resultado")?.valor || "Registrada"}{" "}
+            <span className="text-[11px] text-muted-foreground">({fmtDate((s.conference as Registro & { date: Date }).date)}, {s.conference.usuario})</span>
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Nenhuma conferência registrada.</p>
+        )}
+      </Block>
+
+      {s.others.map((r, i) => (
+        <Block key={i} title={r.aba} icon={<Stethoscope className="w-4 h-4" />}>
+          <Line r={r} />
+        </Block>
+      ))}
 
       {/* dia a dia */}
       <div>
@@ -148,6 +176,7 @@ export function SummaryTab({ bracelet, onGo }: { bracelet: Bracelet; onGo: (tabI
           )
         })}
       </div>
+      <p className="text-[10px] text-center text-muted-foreground pt-2">Vivian · versão {VERSION}</p>
     </div>
   )
 }

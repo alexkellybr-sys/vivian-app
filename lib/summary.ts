@@ -74,6 +74,14 @@ export function buildSummary(b: Bracelet, now = new Date()) {
   const meds = recs.filter((r) => r.aba === "Medicações" && now.getTime() - r.date.getTime() <= dayMs)
   const incidents = recs.filter((r) => r.aba === "Intercorrências" && now.getTime() - r.date.getTime() <= 3 * dayMs)
   const conference = recs.find((r) => r.aba === "Conferência")
+  const lastMed = recs.find((r) => r.aba === "Medicações")
+  const lastIncident = recs.find((r) => r.aba === "Intercorrências")
+  const allMeds = recs.filter((r) => r.aba === "Medicações")
+  const allIncidents = recs.filter((r) => r.aba === "Intercorrências")
+  // abas que não têm bloco próprio no Resumo (ex.: campos/abas novas): mostra o último de cada
+  const KNOWN = ["Sinais vitais", "Alergias", "Diagnóstico", "Medicações", "Intercorrências", "Conferência", "Anamnese", "Dados", "GPS"]
+  const others: typeof recs = []
+  for (const r of recs) if (!KNOWN.includes(r.aba) && !others.some((o) => o.aba === r.aba)) others.push(r)
   const anamnese = recs.filter((r) => r.aba === "Anamnese")
   const alergiaCount = allergies.length
 
@@ -109,6 +117,11 @@ export function buildSummary(b: Bracelet, now = new Date()) {
     conference,
     anamnese,
     alergiaCount,
+    lastMed,
+    lastIncident,
+    allMeds,
+    allIncidents,
+    others,
     days,
   }
 }
