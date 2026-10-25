@@ -214,7 +214,7 @@ function readBracelet_(sheet) {
   dadosRows.forEach(function (r) { dados[r[0]] = r[1] })
   const hist = rows_(sheet, FIRST_ROW, HIST_COL, 5).filter(function (r) { return r[0] || r[2] })
     .map(function (r) { return { data: r[0], aba: r[1], campo: r[2], valor: r[3], usuario: r[4] } })
-  return { nfc: sheet.getName(), campos: dadosRows.map(function (r) { return r[0] }), dados: dados, historico: hist.slice(-300).reverse() }
+  return { nfc: sheet.getName(), campos: dadosRows.map(function (r) { return r[0] }), dados: dados, historico: hist.slice(-1500).reverse() }
 }
 
 function list_() {
@@ -234,6 +234,55 @@ function appendHistory_(sheet, entries) {
   let row = FIRST_ROW
   for (let i = hist.length - 1; i >= 0; i--) if (hist[i][0]) { row = FIRST_ROW + i + 1; break }
   sheet.getRange(row, HIST_COL, entries.length, 5).setValues(entries.map(function (e) { return e.map(safe_) }))
+  rebuildSummary_(sheet)
+}
+
+// ───────────────────────── resumo por dia (colunas J-P) ─────────────────────────
+const SUM_COL = 10 // coluna J
+const SUM_HEADERS = ["Dia", "Data", "Enfermeiras por turno", "Sinais vitais", "Intercorrências", "Medicações", "Outros registros"]
+const SHORT = { "Peso (g)": "Peso", "Temperatura (°C)": "Temp", "Freq. cardíaca (bpm)": "FC", "Freq. respiratória (irpm)": "FR", "Saturação O2 (%)": "Sat" }
+function turno_(hhmm) { const h = Number(String(hhmm).slice(0, 2)); return h >= 7 && h < 13 ? "Manhã" : h >= 13 && h < 19 ? "Tarde" : "Noite" }
+function dayKey_(stamp) { const m = String(stamp).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2) : "" }
+function hhmm_(stamp) { const m = String(stamp).match(/(\d{1,2}):(\d{2})/); return m ? ("0" + m[1]).slice(-2) + ":" + m[2] : "" }
+function dayNumber_(day, first, birth) {
+  const ref = birth || first
+  if (!ref) return ""
+  return Math.round((new Date(day + "T12:00:00") - new Date(ref + "T12:00:00")) / 86400000) + 1
+}
+function rebuildSummary_(sheet) {
+  const hist = rows_(sheet, FIRST_ROW, HIST_COL, 5).filter(function (r) { return r[0] && r[2] })
+  const dados = {}
+  rows_(sheet, FIRST_ROW, 1, 2).forEach(function (r) { if (r[0]) dados[r[0]] = r[1] })
+  const birth = dayKey_(dados["Data de nascimento"] || "")
+  const days = {}, order = []
+  hist.forEach(function (r) {
+    const d = dayKey_(r[0])
+    if (!d) return
+    if (!days[d]) { days[d] = { turnos: {}, sinais: {}, inter: {}, med: {}, outros: {} }; order.push(d) }
+    const day = days[d], t = hhmm_(r[0]), key = t + " " + r[1]
+    if (r[4] && r[4] !== "importação") { day.turnos[turno_(t)] = day.turnos[turno_(t)] || []; if (day.turnos[turno_(t)].indexOf(r[4]) < 0) day.turnos[turno_(t)].push(r[4]) }
+    if (r[1] === "Sinais vitais" && SHORT[r[2]]) { (day.sinais[SHORT[r[2]]] = day.sinais[SHORT[r[2]]] || []).push(r[3]) }
+    else if (r[1] === "Intercorrências") { (day.inter[key] = day.inter[key] || []).push(r[2] === "Gravidade" ? r[3].toUpperCase() : r[3]) }
+    else if (r[1] === "Medicações") { (day.med[key] = day.med[key] || []).push(r[3]) }
+    else { (day.outros[key] = day.outros[key] || []).push(r[2] + ": " + r[3]) }
+  })
+  order.sort()
+  const join = function (obj, sep) { return Object.keys(obj).map(function (k) { return k + " – " + obj[k].join(sep) }).join("\n") }
+  const out = order.map(function (d) {
+    const x = days[d]
+    return [
+      dayNumber_(d, order[0], birth), d.slice(8, 10) + "/" + d.slice(5, 7) + "/" + d.slice(0, 4),
+      ["Manhã", "Tarde", "Noite"].filter(function (t) { return x.turnos[t] }).map(function (t) { return t + ": " + x.turnos[t].join(", ") }).join("\n"),
+      Object.keys(x.sinais).map(function (k) { return k + " " + x.sinais[k].slice(-4).join(" → ") }).join("\n"),
+      join(x.inter, " · "), join(x.med, " "), join(x.outros, " · ").slice(0, 1500),
+    ].map(safe_)
+  })
+  const last = Math.max(sheet.getLastRow(), FIRST_ROW)
+  sheet.getRange(1, SUM_COL, last, SUM_HEADERS.length).clearContent()
+  sheet.getRange(1, SUM_COL).setValue("RESUMO POR DIA (atualiza sozinho)").setFontWeight("bold")
+  sheet.getRange(2, SUM_COL, 1, SUM_HEADERS.length).setValues([SUM_HEADERS]).setFontWeight("bold").setBackground("#D9EAD3")
+  sheet.setColumnWidth(SUM_COL, 40); sheet.setColumnWidth(SUM_COL + 1, 85); sheet.setColumnWidths(SUM_COL + 2, 5, 230)
+  if (out.length) sheet.getRange(FIRST_ROW, SUM_COL, out.length, SUM_HEADERS.length).setValues(out).setWrap(true).setVerticalAlignment("top")
 }
 
 function saveDados_(sheet, nfc, dados, user) {
@@ -451,4 +500,8 @@ function doPost(e) {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu("Vivian").addItem("Preparar abas", "prepararAbas").addToUi()
 }
-function prepararAbas() { ensureSetup_(); repararLinks_() }
+function prepararAbas() {
+  ensureSetup_()
+  repararLinks_()
+  rows_(ss_().getSheetByName(INDEX), FIRST_ROW, 1, 1).forEach(function (r) { const b = r[0] && braceletSheet_(r[0]); if (b) rebuildSummary_(b) })
+}

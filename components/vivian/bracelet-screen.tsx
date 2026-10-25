@@ -7,6 +7,7 @@ import { DADOS_OPTIONS, NAME_FIELD, TABS, type FieldDef, type TabDef } from "@/l
 import type { Bracelet, HistoryEntry } from "@/lib/types"
 import { GoldButton } from "./gold-button"
 import { GpsTab } from "./gps-tab"
+import { SummaryTab } from "./summary-tab"
 import { useGps } from "./gps-monitor"
 
 type Props = {
@@ -22,10 +23,10 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
   const [bracelet, setBracelet] = useState<Bracelet | null>(() => cacheGet<Bracelet>(`b-${nfc}`))
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [tab, setTab] = useState(tabId || "dados")
+  const [tab, setTab] = useState(tabId || "resumo")
   const { alarms } = useGps()
 
-  useEffect(() => setTab(tabId || "dados"), [tabId])
+  useEffect(() => setTab(tabId || "resumo"), [tabId])
 
   const load = async () => {
     setLoading(true)
@@ -110,6 +111,8 @@ export function BraceletScreen({ nfc, tabId, onTabChange, onSaved }: Props) {
       <div className="px-4 pb-6">
         {!bracelet ? (
           <p className="text-sm px-1">{loading ? "Carregando da planilha…" : "Não foi possível carregar esta pulseira."}</p>
+        ) : current.kind === "resumo" ? (
+          <SummaryTab bracelet={bracelet} onGo={choose} />
         ) : current.kind === "dados" ? (
           <DadosTab key={nfc} bracelet={bracelet} onSaved={updated} />
         ) : current.kind === "registro" ? (

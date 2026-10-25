@@ -10,12 +10,14 @@ export type FieldDef = {
 }
 
 export type TabDef =
+  | { id: string; label: string; kind: "resumo" }
   | { id: string; label: string; kind: "dados" }
   | { id: string; label: string; kind: "registro"; fields: FieldDef[] }
   | { id: string; label: string; kind: "checklist"; items: string[] }
   | { id: string; label: string; kind: "gps" }
 
 export const TABS: TabDef[] = [
+  { id: "resumo", label: "Resumo", kind: "resumo" },
   { id: "dados", label: "Dados", kind: "dados" },
   {
     id: "sinais",

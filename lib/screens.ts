@@ -1,1 +1,1 @@
-export type ScreenId = "splash" | "login" | "loading" | "list" | "bracelet" | "alerts" | "profile" | "new"
+export type ScreenId = "splash" | "login" | "loading" | "home" | "list" | "bracelet" | "alerts" | "profile" | "new"
