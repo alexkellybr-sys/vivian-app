@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from "next"
 import "./globals.css"
+import { asset } from "@/lib/config"
 
 export const metadata: Metadata = {
   title: "Vívian - Controle Neonatal",
   description: "Programa para o controle Neonatal",
-  icons: { icon: "/icon.svg", apple: "/apple-icon.png" },
+  icons: { icon: asset("/icon.svg"), apple: asset("/apple-icon.png") },
 }
 
 export const viewport: Viewport = {

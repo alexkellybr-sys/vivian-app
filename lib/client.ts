@@ -1,38 +1,93 @@
 "use client"
 
+import { SCRIPT_URL } from "./config"
+import { keyFromText } from "./nfc"
 import type { Bracelet, BraceletSummary, Fence, GpsState } from "./types"
 
-async function call<T>(url: string, init?: RequestInit): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(url, { cache: "no-store", ...init })
-  } catch {
-    throw new ApiError("Sem internet. Verifique a conexão e tente de novo.")
-  }
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new ApiError(data.error || "Erro ao falar com o servidor.", !!data.notFound, data.nfc)
-  return data as T
-}
+// O app fala direto com o Apps Script da planilha.
+// GET com parâmetros e POST com texto JSON (assim o navegador não faz "preflight", que o Google não aceita).
 
 export class ApiError extends Error {
-  constructor(message: string, public notFound = false, public nfc?: string) {
+  constructor(message: string, public notFound = false, public nfc?: string, public auth = false) {
     super(message)
   }
 }
 
-const json = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+async function parse(response: Response) {
+  const text = await response.text()
+  let data: any
+  try {
+    data = JSON.parse(text)
+  } catch {
+    if (/accounts\.google|ServiceLogin|signin/i.test(text) || /accounts\.google/.test(response.url))
+      throw new ApiError("O script da planilha não está público. No Apps Script: Implantar → Gerenciar implantações → editar → 'Quem pode acessar: Qualquer pessoa'.")
+    throw new ApiError("A planilha respondeu com erro. Tente de novo em instantes.")
+  }
+  if (!data.ok) {
+    if (data.auth) {
+      setSession(null)
+      window.dispatchEvent(new Event("vivian-auth"))
+    }
+    throw new ApiError(data.error || "Erro na planilha.", !!data.notFound, undefined, !!data.auth)
+  }
+  return data
+}
+
+async function get(params: Record<string, string>) {
+  const q = new URLSearchParams({ ...params, s: getSession() || "" }).toString()
+  try {
+    return await parse(await fetch(`${SCRIPT_URL}?${q}`, { cache: "no-store", redirect: "follow" }))
+  } catch (e) {
+    if (e instanceof ApiError) throw e
+    throw new ApiError("Sem internet ou planilha fora do ar. Tente de novo.")
+  }
+}
+
+async function post(body: Record<string, unknown>) {
+  try {
+    return await parse(
+      await fetch(SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ ...body, s: getSession() || "" }),
+        redirect: "follow",
+        cache: "no-store",
+      }),
+    )
+  } catch (e) {
+    if (e instanceof ApiError) throw e
+    throw new ApiError("Sem internet ou planilha fora do ar. Tente salvar de novo.")
+  }
+}
 
 export const api = {
-  list: () => call<{ pulseiras: BraceletSummary[] }>("/api/pulseiras").then((d) => d.pulseiras),
-  get: (numbers: string[]) =>
-    call<{ pulseira: Bracelet }>(`/api/pulseira?${numbers.map((n) => `number=${encodeURIComponent(n)}`).join("&")}`).then((d) => d.pulseira),
+  login: async (usuario: string, pin: string) => {
+    const d = await post({ action: "login", usuario, pin })
+    setSession(d.sessao)
+    setNurse(d.usuario)
+    return d.usuario as string
+  },
+  logout: () => post({ action: "logout" }).catch(() => {}).finally(() => setSession(null)),
+  list: () => get({ action: "list" }).then((d) => d.pulseiras as BraceletSummary[]),
+  // a etiqueta pode trazer vários números (Find Key, link, número de série): tenta um por um
+  get: async (numbers: string[]) => {
+    const candidates = numbers.map((v) => (keyFromText(v) || v).trim()).filter((v) => /[0-9a-z]/i.test(v)).slice(0, 4)
+    if (!candidates.length) throw new ApiError("Número NFC não informado.")
+    for (const nfc of candidates) {
+      try {
+        return (await get({ nfc })).pulseira as Bracelet
+      } catch (e) {
+        if (!(e instanceof ApiError && e.notFound)) throw e
+      }
+    }
+    throw new ApiError(`Pulseira ${candidates[0]} não cadastrada na planilha.`, true, candidates[0])
+  },
   save: (body: { nfc: string; aba?: string; dados?: Record<string, string>; registros?: { campo: string; valor: string }[]; criar?: boolean }) =>
-    call<{ pulseira: Bracelet }>("/api/pulseira", json({ ...body, usuario: getNurse() })).then((d) => d.pulseira),
-  gps: () => call<GpsState & { rastreador: boolean }>("/api/gps"),
-  saveFence: (cerca: Partial<Fence> & { nome: string; apagar?: boolean }) =>
-    call<{ cercas: Fence[] }>("/api/gps", json({ tipo: "cerca", cerca, usuario: getNurse() })).then((d) => d.cercas),
+    post(body.criar ? { action: "create", nfc: body.nfc, dados: body.dados || {} } : { action: "save", ...body }).then((d) => d.pulseira as Bracelet),
+  gps: () => get({ action: "gps" }) as Promise<GpsState & { rastreador: boolean }>,
+  saveFence: (cerca: Partial<Fence> & { nome: string; apagar?: boolean }) => post({ action: "fence", cerca }).then((d) => d.cercas as Fence[]),
   sendPosition: (p: { nfc: string; lat: number; lng: number; acc?: number; fonte: string }) =>
-    call<{ avaliacao: { situacao: string; setor: string; distancia: number; cerca?: string } }>("/api/gps", json({ tipo: "posicao", ...p, usuario: getNurse() })),
+    post({ action: "position", posicao: p }) as Promise<{ avaliacao: { situacao: string; setor: string; distancia: number; cerca?: string } }>,
 }
 
 // ── sessão / preferências guardadas no aparelho ──
@@ -50,10 +105,11 @@ const write = (key: string, value: string | null) => {
   } catch {}
 }
 
+export const getSession = () => read("vivian-session")
+export const setSession = (s: string | null) => write("vivian-session", s)
+export const isLoggedIn = () => !!getSession()
 export const getNurse = () => read("vivian-user") || ""
 export const setNurse = (name: string) => write("vivian-user", name.trim())
-export const isLoggedIn = () => read("vivian-logged-in") === "1"
-export const setLoggedIn = (v: boolean) => write("vivian-logged-in", v ? "1" : null)
 
 export function cacheGet<T>(key: string): T | null {
   try {

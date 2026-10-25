@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { Bell, Home, Monitor, Settings, User } from "lucide-react"
-import { api, cacheGet, cacheSet, getNurse, isLoggedIn, setLoggedIn, setNurse } from "@/lib/client"
+import { api, cacheGet, cacheSet, getNurse, isLoggedIn } from "@/lib/client"
 import type { ScreenId } from "@/lib/screens"
 import type { Bracelet, BraceletSummary } from "@/lib/types"
 import { NAME_FIELD } from "@/lib/tabs"
@@ -15,8 +15,6 @@ import { LoadingScreen } from "./loading-screen"
 import { LoginScreen } from "./login-screen"
 import { NewBraceletScreen } from "./new-bracelet-screen"
 import { ProfileScreen } from "./profile-screen"
-import { RecoverScreen } from "./recover-screen"
-import { RegisterScreen } from "./register-screen"
 import { SplashScreen } from "./splash-screen"
 
 const LOGGED_SCREENS: ScreenId[] = ["list", "bracelet", "alerts", "profile", "new"]
@@ -31,6 +29,7 @@ export function AppShell({ painel = false }: { painel?: boolean }) {
   const [listError, setListError] = useState<string | null>(null)
   const [wide, setWide] = useState(painel)
   const [ready, setReady] = useState(false)
+  const [loginNotice, setLoginNotice] = useState<string | null>(null)
 
   const navigate = useCallback((s: ScreenId) => setScreen(s), [])
   const logged = LOGGED_SCREENS.includes(screen)
@@ -110,16 +109,25 @@ export function AppShell({ painel = false }: { painel?: boolean }) {
     return () => clearTimeout(t)
   }, [screen, openBracelet, notFound])
 
-  const login = (user: string) => {
-    setNurse(user)
-    setLoggedIn(true)
+  const login = () => {
+    setLoginNotice(null)
     setScreen("loading")
   }
   const logout = () => {
-    setLoggedIn(false)
+    void api.logout()
     setSelected(undefined)
     setScreen("login")
   }
+
+  // sessão expirou / usuário desativado na planilha → volta para o login
+  useEffect(() => {
+    const onAuth = () => {
+      setLoginNotice("Sua sessão terminou. Entre de novo com seu PIN.")
+      setScreen((s) => (LOGGED_SCREENS.includes(s) ? "login" : s))
+    }
+    window.addEventListener("vivian-auth", onAuth)
+    return () => window.removeEventListener("vivian-auth", onAuth)
+  }, [])
 
   // depois de salvar, atualiza a linha da lista sem esperar a planilha
   const onSaved = (b: Bracelet) =>
@@ -170,9 +178,7 @@ export function AppShell({ painel = false }: { painel?: boolean }) {
         // ───────── CELULAR ─────────
         <div className="w-full max-w-[414px] h-dvh bg-background mx-auto relative overflow-hidden flex flex-col">
           {screen === "splash" && <SplashScreen onNavigate={navigate} />}
-          {screen === "login" && <LoginScreen onLogin={login} onRecover={() => navigate("recover")} onRegister={() => navigate("register")} />}
-          {screen === "register" && <RegisterScreen onNavigate={navigate} />}
-          {screen === "recover" && <RecoverScreen onNavigate={navigate} />}
+          {screen === "login" && <LoginScreen onLogin={login} notice={loginNotice} />}
           {screen === "loading" && <LoadingScreen />}
           {logged && (
             <>

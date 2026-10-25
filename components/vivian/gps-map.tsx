@@ -23,7 +23,15 @@ export function GpsMap({ fences, positions, focusNfc, draft, onPick, className }
   const lib = useRef<L | null>(null)
   const pickRef = useRef(onPick)
   const fitted = useRef(false)
+  const fenceKey = useRef("")
   pickRef.current = onPick
+
+  // cercas mudaram (nova, apagada) → reenquadra o mapa
+  const key = fences.map((f) => `${f.nome}:${f.coords.length}:${f.raio}`).join("|")
+  if (key !== fenceKey.current) {
+    fenceKey.current = key
+    fitted.current = false
+  }
 
   // cria o mapa uma vez
   useEffect(() => {
@@ -40,10 +48,18 @@ export function GpsMap({ fences, positions, focusNfc, draft, onPick, className }
       m.on("click", (e: import("leaflet").LeafletMouseEvent) => pickRef.current?.([+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)]))
       layer.current = Lf.layerGroup().addTo(m)
       map.current = m
+      // o tamanho do mapa muda (tela girada, abas, painel) → Leaflet precisa recalcular
+      resize = new ResizeObserver(() => {
+        m.invalidateSize()
+        if (!fitted.current) draw()
+      })
+      resize.observe(box.current)
       draw()
     })
+    let resize: ResizeObserver | null = null
     return () => {
       cancelled = true
+      resize?.disconnect()
       map.current?.remove()
       map.current = null
     }
@@ -99,8 +115,9 @@ export function GpsMap({ fences, positions, focusNfc, draft, onPick, className }
       if (focus) bounds.push([p.lat, p.lng])
     }
 
-    if (!fitted.current && bounds.length) {
-      m.fitBounds(bounds as import("leaflet").LatLngBoundsExpression, { padding: [30, 30], maxZoom: 18 })
+    if (!fitted.current && bounds.length && box.current && box.current.clientHeight > 50) {
+      m.invalidateSize()
+      m.fitBounds(bounds as import("leaflet").LatLngBoundsExpression, { padding: [30, 30], maxZoom: 18, animate: false })
       fitted.current = true
     }
   }

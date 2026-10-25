@@ -1,20 +1,23 @@
 /**
- * VIVIAN v2 – ponte entre o app e a planilha (Google Apps Script)
+ * VIVIAN v3 – a planilha É o servidor do app (Google Apps Script)
  *
- * Estrutura que este script cria e mantém sozinho:
+ * O app (site no GitHub Pages) fala direto com este script. Ninguém entra sem PIN:
+ *  • "Usuários"   – Nome | PIN | Ativo | Último acesso   (cadastre aqui as enfermeiras)
  *  • "Pulseiras"  – índice: NFC | Bebê | Mãe | Leito | GPS | Última atualização | Abrir aba (link)
- *  • "<NFC>"      – uma aba por pulseira (ex.: "11982"):
- *                    colunas A-B = DADOS (campo | valor)      colunas D-H = HISTÓRICO
- *                    (Data/hora | Aba | Campo | Valor | Usuário)
- *  • "Cercas"     – áreas do GPS: Nome | Tipo | Pulseiras | Forma | Coordenadas | Raio (m) | Ativa | Atualizado
- *  • "Posições"   – última posição de cada pulseira
- * A aba antiga (primeira aba, coluna A = NFC) é usada só para importar as pulseiras na 1ª vez.
+ *  • "<NFC>"      – uma aba por pulseira: DADOS (A-B) e HISTÓRICO (D-H)
+ *  • "Cercas", "Posições" – GPS
+ * A primeira aba antiga (coluna A = NFC) é usada só para importar as pulseiras na 1ª vez.
  *
- * Instalação: Extensões → Apps Script → apague tudo → cole este código → Salvar
+ * Instalação: Extensões → Apps Script → apague tudo → cole → Salvar
  *   Implantar → Nova implantação → App da Web → Executar como: Eu → Quem pode acessar: Qualquer pessoa
+ *
+ * Rastreador GPS (opcional, ex.: GF-07 enviando para um servidor Traccar):
+ *   preencha TRACCAR_URL e TRACCAR_TOKEN abaixo, salve e rode a função "ativarRastreador" uma vez.
  */
 
-const TOKEN = "viv_58f59d9c681c1c1d6c1ce3bdc9247ed4" // igual ao do app (não compartilhe)
+const TRACCAR_URL = ""   // ex.: "https://demo.traccar.org"
+const TRACCAR_TOKEN = "" // token da conta no Traccar (Configurações da conta → Token)
+const SESSION_HOURS = 12
 
 const INDEX = "Pulseiras"
 const FENCES = "Cercas"
@@ -56,6 +59,7 @@ function ensureSetup_() {
   header_(fences, "VIVIAN – Cercas do GPS", FENCE_HEADERS)
   const pos = ss.getSheetByName(POSITIONS) || ss.insertSheet(POSITIONS)
   header_(pos, "VIVIAN – Última posição de cada pulseira", POS_HEADERS)
+  ensureUsers_()
 
   // importa as pulseiras da aba antiga (coluna A = NFC; nome na célula depois de "nome")
   const old = ss.getSheets().filter(function (s) { return [INDEX, FENCES, POSITIONS].indexOf(s.getName()) < 0 })[0]
@@ -73,6 +77,82 @@ function ensureSetup_() {
       createBracelet_(nfc, name ? { "Nome do bebê": name } : {}, "importação")
     })
   }
+}
+
+// ───────────────────────── usuários e sessões ─────────────────────────
+const USERS = "Usuários"
+function ensureUsers_() {
+  const ss = ss_()
+  if (ss.getSheetByName(USERS)) return
+  const u = ss.insertSheet(USERS)
+  header_(u, "VIVIAN – Usuários (PIN de 4 a 8 números). Ativo = sim/não", ["Nome", "PIN", "Ativo", "Último acesso"])
+  u.getRange(1, 2, 1000, 1).setNumberFormat("@")
+  const pin = String(Math.floor(100000 + Math.random() * 900000))
+  u.getRange(FIRST_ROW, 1, 1, 3).setValues([["Administrador", pin, "sim"]])
+}
+function users_() {
+  ensureUsers_()
+  return rows_(ss_().getSheetByName(USERS), FIRST_ROW, 1, 3).map(function (r, i) { return { nome: r[0], pin: r[1], ativo: r[2].toLowerCase() !== "não" && r[2].toLowerCase() !== "nao", row: i + FIRST_ROW } })
+    .filter(function (u) { return u.nome && u.pin })
+}
+function login_(nome, pin) {
+  const cache = CacheService.getScriptCache()
+  const fk = "f_" + String(nome).trim().toLowerCase()
+  const fails = Number(cache.get(fk) || 0)
+  if (fails >= 5) return { ok: false, error: "Muitas tentativas erradas. Aguarde 10 minutos." }
+  const u = users_().filter(function (x) { return x.nome.trim().toLowerCase() === String(nome).trim().toLowerCase() })[0]
+  if (!u || !u.ativo || u.pin !== String(pin).trim()) {
+    cache.put(fk, String(fails + 1), 600)
+    return { ok: false, error: "Usuário ou PIN incorreto." }
+  }
+  cache.remove(fk)
+  const props = PropertiesService.getScriptProperties()
+  const now = Date.now()
+  const all = props.getProperties()
+  Object.keys(all).forEach(function (k) { if (k.indexOf("s_") === 0) { try { if (JSON.parse(all[k]).exp < now) props.deleteProperty(k) } catch (e) { props.deleteProperty(k) } } })
+  const token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "")
+  props.setProperty("s_" + token, JSON.stringify({ u: u.nome, exp: now + SESSION_HOURS * 3600000 }))
+  ss_().getSheetByName(USERS).getRange(u.row, 4).setValue(now_())
+  return { ok: true, sessao: token, usuario: u.nome }
+}
+function session_(token) {
+  if (!token || !/^[0-9a-f]{64}$/i.test(token)) return null
+  const raw = PropertiesService.getScriptProperties().getProperty("s_" + token)
+  if (!raw) return null
+  const s = JSON.parse(raw)
+  if (s.exp < Date.now()) return null
+  const u = users_().filter(function (x) { return x.nome === s.u })[0]
+  return u && u.ativo ? s.u : null // desativar o usuário na planilha corta o acesso na hora
+}
+function logout_(token) { if (token) PropertiesService.getScriptProperties().deleteProperty("s_" + token) }
+
+// ───────────────────────── rastreador (Traccar) ─────────────────────────
+function ativarRastreador() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === "sincronizarRastreador") ScriptApp.deleteTrigger(t) })
+  ScriptApp.newTrigger("sincronizarRastreador").timeBased().everyMinutes(1).create()
+  sincronizarRastreador()
+}
+function sincronizarRastreador() {
+  if (!TRACCAR_URL || !TRACCAR_TOKEN) return 0
+  ensureSetup_()
+  const linked = list_().filter(function (p) { return p.gps })
+  if (!linked.length) return 0
+  const base = TRACCAR_URL.replace(/\/$/, "")
+  const opt = { headers: { Authorization: "Bearer " + TRACCAR_TOKEN }, muteHttpExceptions: true }
+  const devices = JSON.parse(UrlFetchApp.fetch(base + "/api/devices", opt).getContentText() || "[]")
+  const positions = JSON.parse(UrlFetchApp.fetch(base + "/api/positions", opt).getContentText() || "[]")
+  const props = PropertiesService.getScriptProperties()
+  let sent = 0
+  linked.forEach(function (p) {
+    const d = devices.filter(function (x) { return String(x.uniqueId).trim() === String(p.gps).trim() })[0]
+    const pos = d && positions.filter(function (x) { return x.deviceId === d.id })[0]
+    if (!pos || !pos.valid || (pos.latitude === 0 && pos.longitude === 0)) return
+    if (props.getProperty("t_" + p.nfc) === pos.fixTime) return
+    savePosition_({ nfc: p.nfc, lat: pos.latitude, lng: pos.longitude, acc: pos.accuracy || 0, fonte: "rastreador " + (d.name || p.gps) }, "rastreador")
+    props.setProperty("t_" + p.nfc, pos.fixTime)
+    sent++
+  })
+  return sent
 }
 
 function braceletSheet_(nfc) {
@@ -192,6 +272,12 @@ function fences_() {
 }
 
 function saveFence_(f) {
+  f.nome = String(f.nome || "").trim().slice(0, 60)
+  if (!f.nome) throw new Error("Dê um nome para a cerca.")
+  f.coords = (Array.isArray(f.coords) ? f.coords : []).map(function (c) { return [Number(c[0]), Number(c[1])] })
+    .filter(function (c) { return isFinite(c[0]) && isFinite(c[1]) && Math.abs(c[0]) <= 90 && Math.abs(c[1]) <= 180 }).slice(0, 200)
+  if (!f.apagar && (f.forma === "circulo" ? (f.coords.length < 1 || !(Number(f.raio) > 0)) : f.coords.length < 3))
+    throw new Error("Cerca incompleta: polígono precisa de 3 pontos; círculo precisa de centro e raio.")
   const sheet = ss_().getSheetByName(FENCES)
   const existing = fences_().filter(function (x) { return x.nome.toLowerCase() === String(f.nome).trim().toLowerCase() })[0]
   if (f.apagar) { if (existing) sheet.deleteRow(existing.row); return }
@@ -291,16 +377,18 @@ function positions_() {
 }
 
 // ───────────────────────── entradas ─────────────────────────
+// GET  ?s=<sessão>&action=list|gps|fences|positions   ou   ?s=...&nfc=11982
 function doGet(e) {
   const p = (e && e.parameter) || {}
-  if (p.token !== TOKEN) return json_({ ok: false, error: "Token inválido." })
   try {
+    if (!p.s && !p.action) return json_({ ok: true, app: "Vivian", versao: 3 })
     ensureSetup_()
+    const user = session_(p.s)
+    if (!user) return json_({ ok: false, auth: true, error: "Sessão expirada. Entre de novo." })
     if (p.action === "list") return json_({ ok: true, pulseiras: list_() })
     if (p.action === "fences") return json_({ ok: true, cercas: fences_() })
     if (p.action === "positions") return json_({ ok: true, posicoes: positions_() })
-    if (p.action === "gps") return json_({ ok: true, cercas: fences_(), posicoes: positions_(), pulseiras: list_() })
-    // padrão: uma pulseira
+    if (p.action === "gps") return json_({ ok: true, cercas: fences_(), posicoes: positions_(), pulseiras: list_(), rastreador: !!(TRACCAR_URL && TRACCAR_TOKEN) })
     const sheet = braceletSheet_(p.nfc)
     if (!sheet) return json_({ ok: false, notFound: true, error: "Pulseira " + p.nfc + " não cadastrada." })
     return json_({ ok: true, pulseira: readBracelet_(sheet) })
@@ -309,15 +397,18 @@ function doGet(e) {
   }
 }
 
+// POST (texto JSON) { action: "login"|"logout"|"save"|"create"|"fence"|"position", s: <sessão>, ... }
 function doPost(e) {
   let b
   try { b = JSON.parse((e && e.postData && e.postData.contents) || "{}") } catch (err) { return json_({ ok: false, error: "Dados inválidos." }) }
-  if (b.token !== TOKEN) return json_({ ok: false, error: "Token inválido." })
   const lock = LockService.getScriptLock()
   try {
     lock.waitLock(25000)
     ensureSetup_()
-    const user = String(b.usuario || "").slice(0, 60)
+    if (b.action === "login") return json_(login_(b.usuario || "", b.pin || ""))
+    if (b.action === "logout") { logout_(b.s); return json_({ ok: true }) }
+    const user = session_(b.s)
+    if (!user) return json_({ ok: false, auth: true, error: "Sessão expirada. Entre de novo." })
     if (b.action === "fence") { saveFence_(b.cerca || {}); return json_({ ok: true, cercas: fences_() }) }
     if (b.action === "position") { const ev = savePosition_(b.posicao || {}, user); return json_({ ok: true, avaliacao: ev }) }
     if (b.action === "create") {
@@ -325,7 +416,6 @@ function doPost(e) {
       const sheet = createBracelet_(b.nfc, b.dados || {}, user)
       return json_({ ok: true, pulseira: readBracelet_(sheet) })
     }
-    // padrão: salvar dados e/ou registros de uma aba
     const sheet = braceletSheet_(b.nfc)
     if (!sheet) return json_({ ok: false, notFound: true, error: "Pulseira " + b.nfc + " não cadastrada." })
     if (b.dados && Object.keys(b.dados).length) saveDados_(sheet, sheet.getName(), b.dados, user)
@@ -341,7 +431,7 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: String(err && err.message || err) })
   } finally {
-    lock.releaseLock()
+    try { lock.releaseLock() } catch (e) {}
   }
 }
 

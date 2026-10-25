@@ -1,6 +1,6 @@
 "use client"
 
-import Image from "next/image"
+import { asset } from "@/lib/config"
 import { useEffect } from "react"
 import type { ScreenId } from "@/lib/screens"
 
@@ -22,13 +22,8 @@ export function SplashScreen({ onNavigate }: SplashScreenProps) {
       onClick={() => onNavigate("login")}
     >
       <div className="relative w-72 h-72 mb-8">
-        <Image
-          src="/images/vivian-splash.jpg"
-          alt="Mãe segurando bebê"
-          fill
-          className="object-contain rounded-3xl"
-          priority
-        />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={asset("/images/vivian-splash.jpg")} alt="Mãe segurando bebê" className="absolute inset-0 w-full h-full object-contain rounded-3xl" />
       </div>
       
       <h1 className="text-4xl font-bold text-foreground tracking-wide mb-2">
