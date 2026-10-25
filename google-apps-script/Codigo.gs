@@ -62,7 +62,7 @@ function ensureSetup_() {
   ensureUsers_()
 
   // importa as pulseiras da aba antiga (coluna A = NFC; nome na célula depois de "nome")
-  const old = ss.getSheets().filter(function (s) { return [INDEX, FENCES, POSITIONS].indexOf(s.getName()) < 0 })[0]
+  const old = ss.getSheets().filter(function (s) { return [INDEX, FENCES, POSITIONS, USERS].indexOf(s.getName()) < 0 })[0]
   if (old && old.getLastRow() >= 1) {
     const data = old.getRange(1, 1, old.getLastRow(), Math.max(old.getLastColumn(), 1)).getValues().map(function (r) { return r.map(str_) })
     data.forEach(function (row) {
